@@ -1,0 +1,5 @@
+Advanced Navigation ROS Drivers
+
+The ROS1 and ROS2 drivers are available for download on GitHub:
+https://github.com/advanced-navigation/ros1-driver
+https://github.com/advanced-navigation/ros2-driver
