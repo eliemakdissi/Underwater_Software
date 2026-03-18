@@ -1,0 +1,83 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build SLAM main",
+            "type": "shell",
+            "command": "c++",
+            "args": [
+                "SLAM/main.cpp",
+                "-std=c++17",
+                "-I/opt/homebrew/opt/opencv/include/opencv4",
+                "-L/opt/homebrew/opt/opencv/lib",
+                "-lopencv_core",
+                "-lopencv_imgproc",
+                "-lopencv_highgui",
+                "-lopencv_videoio",
+                "-lopencv_features2d",
+                "-o",
+                "SLAM/slam_main"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Build SLAM matching",
+            "type": "shell",
+            "command": "c++",
+            "args": [
+                "SLAM/matching.cpp",
+                "-std=c++17",
+                "-I/opt/homebrew/opt/opencv/include/opencv4",
+                "-L/opt/homebrew/opt/opencv/lib",
+                "-lopencv_core",
+                "-lopencv_imgproc",
+                "-lopencv_highgui",
+                "-lopencv_imgcodecs",
+                "-lopencv_features2d",
+                "-lopencv_flann",
+                "-lopencv_xfeatures2d",
+                "-o",
+                "SLAM/matching_demo"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "Build SLAM save frames",
+            "type": "shell",
+            "command": "c++",
+            "args": [
+                "SLAM/save_frames.cpp",
+                "-std=c++17",
+                "-I/opt/homebrew/opt/opencv/include/opencv4",
+                "-L/opt/homebrew/opt/opencv/lib",
+                "-lopencv_core",
+                "-lopencv_imgproc",
+                "-lopencv_highgui",
+                "-lopencv_videoio",
+                "-lopencv_imgcodecs",
+                "-o",
+                "SLAM/save_frames"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        }
+    ]
+}

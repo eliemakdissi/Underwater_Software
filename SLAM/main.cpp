@@ -75,9 +75,9 @@ int main(int argc, char** argv) {
     cv::namedWindow(useVideoFile ? "Flux video" : "Flux camera", cv::WINDOW_AUTOSIZE);
 
     cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
-    clahe->setClipLimit(4);
+    clahe->setClipLimit(3.5);
     clahe->setTilesGridSize(cv::Size(6, 6));
-    const float minResponseRatio = 0.2f;
+    const float minResponseRatio = 0.0f;
 
     cv::Ptr<cv::ORB> orb = cv::ORB::create(
         1500,                    // nfeatures
@@ -91,8 +91,7 @@ int main(int argc, char** argv) {
         20                       // fastThreshold
     );
 
-    Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED); // feature matching en utilisant FLANN
-    matcher->knnMatch( descriptors1, descriptors2, knn_matches, 2 );
+    // feature matching en utilisant FLANN
 
 
     cv::Mat frame;
@@ -141,7 +140,7 @@ int main(int argc, char** argv) {
         }
 
         cv::drawKeypoints(
-            frame,
+            frameEnhanced,
             keypoints,
             frameWithFeatures,
             cv::Scalar(0, 255, 0),
