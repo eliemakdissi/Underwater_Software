@@ -54,12 +54,13 @@ def calculate_angle(first_sample,second_sample):
     delta_t = retard_sample/SAMPLE_RATE
     ratio = (C_WATER * delta_t) / DISTANCE_MICROPHONES
     ratio = np.clip(ratio, -1.0, 1.0)
-    return np.arcsin(ratio)*180/np.pi
+    return np.arcsin(np.pi/2 - ratio)*180/np.pi
 
 def detect_interest_noise(first_sample,second_sample):
-    return None
-
-
+    pic = np.max(np.abs(first_sample))
+    if pic > DETECTION_THRESHOLD:
+        return True
+    return False 
 
 def main():
     # Set up plot
@@ -86,6 +87,7 @@ def main():
     # Buffers for saving
     recorded_blocks_first= []
     recorded_blocks_second=[]
+    angles = []
     processed_blocks = 0
 
     def update(_frame):
@@ -97,6 +99,10 @@ def main():
             block = audio_q.get()
             first_audio,second_audio = block[:,0],block[:,1]
             processed_blocks += 1
+            if detect_interest_noise(first_audio, second_audio):
+                angle = calculate_angle(first_audio, second_audio)
+                angles.append(angle)
+                print(angle)
             first_signal_plot,second_signal_plot = np.roll(first_signal_plot, -BLOCK_SIZE),np.roll(second_signal_plot,-BLOCK_SIZE)
             first_signal_plot[-BLOCK_SIZE:]=first_audio
             second_signal_plot[-BLOCK_SIZE:]=second_audio
@@ -109,8 +115,6 @@ def main():
             if SAVE_AUDIO:
                 recorded_blocks_first.append(first_audio.astype(np.float32))
                 recorded_blocks_second.append(second_audio.astype(np.float32))
-            
-            
 
         return time_first, time_second
 
