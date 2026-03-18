@@ -12,16 +12,16 @@ from matplotlib.animation import FuncAnimation
 # =========================
 # Configuration
 # =========================
-SAMPLE_RATE = 16000                     # Sample rate in Hz
-BLOCK_SIZE = 1024                       # Number of samples per callback block
+SAMPLE_RATE = 96000                     # Sample rate in Hz
+BLOCK_SIZE = 16384                      # Number of samples per callback block
 DISPLAYED_TIME = 3                      # Duration in which the signal is displayed
 NUM_SAMPLES_DISPLAYED = DISPLAYED_TIME*SAMPLE_RATE   # Number of samples displayed according to the time and sample rate
 CHANNELS = 2                            # Bi-directionnal mic with Focusrite card
-DEVICE =  6                             # None = system default input device, else check device with "python -m sounddevice"
+DEVICE =  1                             # None = system default input device, else check device with "python -m sounddevice"
 SAVE_AUDIO = True                       # Save recorded audio to WAV when window closes
 OUTPUT_DIR = "output"                   # Output directory for generated files
-DETECTION_THRESHOLD = 0.3               # Detection threshold for calculating angles
-C_WATER = 1500                          # Celerity of sound in water in m/S
+DETECTION_THRESHOLD = 0.6               # Detection threshold for calculating angles
+C_WATER = 1500                          # Celerity of sound in the medium tested in m/S
 DISTANCE_MICROPHONES=1                  # Distance between microphones in m
 
 # Thread-safe queue for audio blocks from callback
@@ -54,7 +54,7 @@ def calculate_angle(first_sample,second_sample):
     delta_t = retard_sample/SAMPLE_RATE
     ratio = (C_WATER * delta_t) / DISTANCE_MICROPHONES
     ratio = np.clip(ratio, -1.0, 1.0)
-    return np.arcsin(np.pi/2 - ratio)*180/np.pi
+    return (np.pi/2 - np.arcsin(ratio))*180/np.pi
 
 def detect_interest_noise(first_sample,second_sample):
     pic = np.max(np.abs(first_sample))
@@ -102,7 +102,7 @@ def main():
             if detect_interest_noise(first_audio, second_audio):
                 angle = calculate_angle(first_audio, second_audio)
                 angles.append(angle)
-                print(angle)
+                print(f"Measured angle: {angle}")
             first_signal_plot,second_signal_plot = np.roll(first_signal_plot, -BLOCK_SIZE),np.roll(second_signal_plot,-BLOCK_SIZE)
             first_signal_plot[-BLOCK_SIZE:]=first_audio
             second_signal_plot[-BLOCK_SIZE:]=second_audio
