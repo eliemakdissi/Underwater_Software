@@ -91,6 +91,9 @@ int main(int argc, char** argv) {
         20                       // fastThreshold
     );
 
+    Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED); // feature matching en utilisant FLANN
+    matcher->knnMatch( descriptors1, descriptors2, knn_matches, 2 );
+
 
     cv::Mat frame;
     cv::Mat frameGray;
