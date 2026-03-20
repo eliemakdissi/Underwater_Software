@@ -1,35 +1,43 @@
 # Underwater Acoustic Signal Analysis
 
-This repository processes underwater audio recordings, keeps only the target beacon bands (`8.8 kHz` and `37.5 kHz`), and generates analysis artifacts (filtered WAV, spectrum, dominant frequency track, plots, and metadata).
+This repository processes underwater audio recordings, keeps selected beacon bands (single or double mode), and generates analysis artifacts (filtered WAV, spectrum, dominant frequency track, plots, and metadata).
 
-## 1) Pull This Branch
+## 1) Clone / Pull the `acoustique` Branch
 
-From PowerShell:
+Reference branch:
+- [Underwater_Software - acoustique](https://github.com/eliemakdissi/Underwater_Software/tree/acoustique)
 
-```powershell
-cd E:\MINES\UNDERWATER
-git clone <repo-url> acoustique
-cd acoustique
-git fetch origin
-git checkout <branch-name>
-git pull origin <branch-name>
-```
-
-If you already cloned the repo:
+### First-time clone
 
 ```powershell
-cd E:\MINES\UNDERWATER\acoustique
-git fetch origin
-git checkout <branch-name>
-git pull origin <branch-name>
+cd E:\
+git clone --branch acoustique --single-branch https://github.com/eliemakdissi/Underwater_Software.git
+cd Underwater_Software
 ```
+
+### Update an existing clone
+
+```powershell
+cd E:\Underwater_Software
+git fetch origin
+git checkout acoustique
+git pull --ff-only origin acoustique
+```
+
+### Verify current branch
+
+```powershell
+git branch --show-current
+```
+
+Expected output: `acoustique`.
 
 ## 2) Install Dependencies
 
-Use Python 3.10+ (recommended).
+Use Python 3.10+ (recommended):
 
 ```powershell
-cd E:\MINES\UNDERWATER\acoustique
+cd E:\Underwater_Software
 python -m pip install --upgrade pip
 python -m pip install numpy scipy matplotlib pandas sounddevice
 ```
@@ -38,21 +46,34 @@ Notes:
 - `main.py` does **not** require microphone hardware.
 - Real-time scripts (`realtime_*.py`) require a working input audio device and `sounddevice`.
 
-## 3) Main Workflow (`main.py`)
+## 3) Quick Start
 
-`main.py` is the primary entrypoint for offline processing.
-For implementation details of the dual-band filtering stage, see `filter.md`.
+```powershell
+cd E:\Underwater_Software
+python main.py --mode double
+```
+
+Then open the newest folder under `output\` and inspect:
+- `analysis_plots.png`
+- `dominant_freq.csv`
+- `metadata.json`
+
+## 4) Main Workflow (`main.py`)
+
+`main.py` is the primary offline entrypoint.  
+For filter implementation details, see [filter.md](filter.md).
 
 What it does:
 - Reads one WAV from `input/` (or a specific file you pass).
-- Applies either single-band or dual-band filtering, depending on mode.
-- Analyzes the **filtered** signal with frame-wise FFT.
-- Creates a timestamped result folder under `output/`.
+- Applies `single` or `double` band-pass filtering.
+- Amplifies selected band content with `--band-gain` (default `20`).
+- Analyzes the filtered signal with frame-wise FFT.
+- Creates a timestamped output folder under `output/`.
 
 Run with defaults:
 
 ```powershell
-cd E:\MINES\UNDERWATER\acoustique
+cd E:\Underwater_Software
 python main.py
 ```
 
@@ -60,9 +81,9 @@ Run with explicit arguments:
 
 ```powershell
 python main.py `
-  --input-dir "E:\MINES\UNDERWATER\acoustique\input" `
+  --input-dir "E:\Underwater_Software\input" `
   --wav "clean_record_sea.wav" `
-  --output-root "E:\MINES\UNDERWATER\acoustique\output" `
+  --output-root "E:\Underwater_Software\output" `
   --block-size 8192 `
   --relative-margin 0.03 `
   --filter-order 6 `
@@ -72,35 +93,35 @@ python main.py `
 
 ### Filtering Modes
 
-- `double` mode: keep both target frequencies (`8.8 kHz` and `37.5 kHz`).
-- `single` mode: keep only one frequency set by `--single-frequency`.
+- `double`: keep both `8.8 kHz` and `37.5 kHz`.
+- `single`: keep one frequency via `--single-frequency`.
 
 Examples:
 
 ```powershell
-# Keep both 8.8kHz and 37.5kHz (default behavior)
+# Double mode (default): keep 8.8kHz + 37.5kHz
 python main.py --mode double
 
-# Keep only 8.8kHz
+# Single mode: keep only 8.8kHz
 python main.py --mode single --single-frequency 8800
 
-# Keep only 37.5kHz
+# Single mode: keep only 37.5kHz
 python main.py --mode single --single-frequency 37500
 ```
 
 ### Output Files Per Run
 
 Inside `output/<input_stem>_<timestamp>/`:
-- `filtered_signal.wav`: filtered audio containing only the two target bands.
-- `spectrum.npz`: saved FFT/spectrogram matrix and frame metadata.
+- `filtered_signal.wav`: filtered audio after mode selection and gain.
+- `spectrum.npz`: frame-wise FFT/spectrogram matrix and metadata.
 - `dominant_freq.csv`: dominant frequency over time.
-- `analysis_plots.png`: waveform + spectrogram + dominant-frequency figure.
-- `metadata.json`: processing configuration and file summary.
+- `analysis_plots.png`: waveform + spectrogram + dominant-frequency plot.
+- `metadata.json`: configuration and run summary.
 
-## 4) File-by-File Overview (One Sentence Each)
+## 5) File-by-File Overview (One Sentence Each)
 
 - `main.py`: Minimal CLI entrypoint that filters and analyzes one WAV file end-to-end.
-- `filter.md`: Technical note describing how the dual-band filtering is designed and applied.
+- `filter.md`: Technical note describing filter design and usage (`single`/`double` modes).
 - `plot_recorded_outputs.py`: Utility script to visualize saved WAV/NPZ/CSV outputs from previous recordings.
 - `realtime_mic_spectrum.py`: Real-time single-microphone recorder and spectrum analyzer with optional output saving.
 - `realtime_double_mic.py`: Real-time dual-microphone viewer/recorder prepared for angle-estimation workflows.
@@ -112,11 +133,11 @@ Inside `output/<input_stem>_<timestamp>/`:
 - `input/clean_record_sea.wav`: Example input recording used by default commands.
 - `output/`: Generated result folders created by processing scripts.
 
-## 5) Typical End-to-End Example
+## 6) Typical End-to-End Example
 
 ```powershell
-cd E:\MINES\UNDERWATER\acoustique
-python main.py --wav clean_record_sea.wav
+cd E:\Underwater_Software
+python main.py --wav clean_record_sea.wav --mode double --band-gain 20
 ```
 
 Then open the newest folder under `output/` and inspect `analysis_plots.png` and `dominant_freq.csv`.
