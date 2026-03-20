@@ -45,7 +45,7 @@ For implementation details of the dual-band filtering stage, see `filter.md`.
 
 What it does:
 - Reads one WAV from `input/` (or a specific file you pass).
-- Applies dual band-pass filtering around `8.8 kHz` and `37.5 kHz`.
+- Applies either single-band or dual-band filtering, depending on mode.
 - Analyzes the **filtered** signal with frame-wise FFT.
 - Creates a timestamped result folder under `output/`.
 
@@ -65,7 +65,27 @@ python main.py `
   --output-root "E:\MINES\UNDERWATER\acoustique\output" `
   --block-size 8192 `
   --relative-margin 0.03 `
-  --filter-order 6
+  --filter-order 6 `
+  --mode double `
+  --band-gain 20
+```
+
+### Filtering Modes
+
+- `double` mode: keep both target frequencies (`8.8 kHz` and `37.5 kHz`).
+- `single` mode: keep only one frequency set by `--single-frequency`.
+
+Examples:
+
+```powershell
+# Keep both 8.8kHz and 37.5kHz (default behavior)
+python main.py --mode double
+
+# Keep only 8.8kHz
+python main.py --mode single --single-frequency 8800
+
+# Keep only 37.5kHz
+python main.py --mode single --single-frequency 37500
 ```
 
 ### Output Files Per Run

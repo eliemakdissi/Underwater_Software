@@ -14,17 +14,17 @@ All other frequency content is attenuated as much as possible.
 
 The filtering pipeline is implemented in:
 - `utils/audio_pipeline.py` in `selective_bandpass(...)`
-- `utils/audio_pipeline.py` in `apply_dual_band_filter(...)`
+- `utils/audio_pipeline.py` in `apply_multi_band_filter(...)`
 
 `main.py` calls these functions before any FFT analysis, so all downstream outputs are based on the filtered signal.
 
 ## Processing Steps
 
 1. Read WAV and convert to mono float (`[-1, 1]`).
-2. Build one narrow band-pass filter centered at `8.8 kHz`.
-3. Build another narrow band-pass filter centered at `37.5 kHz`.
-4. Apply both filters independently to the same signal.
-5. Sum both filtered outputs to form the final filtered waveform.
+2. Build one narrow band-pass filter for each target frequency selected by the mode.
+3. Apply all selected filters independently to the same signal.
+4. Sum filtered outputs to form the final filtered waveform.
+5. Apply band gain (`--band-gain`, default `20`).
 6. Normalize only if peak amplitude exceeds `1.0` (prevents clipping when saving WAV).
 
 ### How One Narrow Band-Pass Filter Is Built
@@ -89,11 +89,31 @@ If not, it raises an error because no valid digital band-pass can exist above Ny
 You can tune filtering behavior from `main.py`:
 
 ```powershell
-python main.py --relative-margin 0.02 --filter-order 8
+python main.py --relative-margin 0.02 --filter-order 8 --band-gain 20
 ```
 
 - Smaller `relative_margin` => narrower passband, stronger rejection, more sensitivity to frequency drift.
 - Larger `filter_order` => steeper roll-off, but higher computational cost.
+
+## Single vs Double Mode
+
+`main.py` supports two filtering modes:
+
+- `--mode double`: keep both target frequencies (`8800 Hz` and `37500 Hz`).
+- `--mode single`: keep only one frequency defined by `--single-frequency`.
+
+Examples:
+
+```powershell
+# Double mode (default): keep 8.8kHz and 37.5kHz
+python main.py --mode double
+
+# Single mode: keep only 8.8kHz
+python main.py --mode single --single-frequency 8800
+
+# Single mode: keep only 37.5kHz
+python main.py --mode single --single-frequency 37500
+```
 
 ## Output Impact
 

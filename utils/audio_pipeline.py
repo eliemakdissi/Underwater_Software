@@ -48,10 +48,22 @@ def selective_bandpass(data, sample_rate, target_freq, relative_margin=0.03, ord
     return signal.sosfiltfilt(sos, data).astype(np.float32)
 
 
-def apply_dual_band_filter(audio, sample_rate, relative_margin=0.03, order=6):
+def apply_multi_band_filter(
+    audio,
+    sample_rate,
+    target_freqs,
+    relative_margin=0.03,
+    order=6,
+    band_gain=20.0,
+):
+    if not target_freqs:
+        raise ValueError("target_freqs must contain at least one frequency.")
+    if band_gain <= 0:
+        raise ValueError("band_gain must be positive.")
     filtered = np.zeros_like(audio, dtype=np.float32)
-    for target in TARGET_FREQS_HZ:
+    for target in target_freqs:
         filtered += selective_bandpass(audio, sample_rate, target, relative_margin, order)
+    filtered *= float(band_gain)
     peak = float(np.max(np.abs(filtered))) if filtered.size else 0.0
     return filtered / peak if peak > 1.0 else filtered
 
@@ -94,8 +106,10 @@ def save_analysis_outputs(
     channels,
     filtered_audio,
     processed,
+    filtered_frequencies_hz,
     relative_margin,
     filter_order,
+    band_gain,
 ):
     output_dir.mkdir(parents=True, exist_ok=True)
     save_wav(str(output_dir / "filtered_signal.wav"), filtered_audio, sample_rate)
@@ -123,12 +137,20 @@ def save_analysis_outputs(
     fig.suptitle("Filtered Audio Analysis Results")
 
     axes[0].plot(wav_time, filtered_audio, linewidth=0.8)
-    axes[0].set_title("Waveform (Filtered)")
+    axes[0].set_title(f"Waveform (Filtered, full duration, gain x{band_gain:g})")
     axes[0].set_xlabel("Time (s)")
     axes[0].set_ylabel("Amplitude")
     axes[0].set_ylim(-1.0, 1.0)
     if wav_time.size:
         axes[0].set_xlim(0, wav_time[-1])
+    axes[0].text(
+        0.02,
+        0.92,
+        f"Band gain: x{band_gain:g}",
+        transform=axes[0].transAxes,
+        fontsize=10,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.7},
+    )
 
     extent = [
         float(times[0]) if times.size else 0.0,
@@ -165,9 +187,10 @@ def save_analysis_outputs(
         "sample_rate_hz": int(sample_rate),
         "input_channels": int(channels),
         "duration_s": float(filtered_audio.size / sample_rate) if sample_rate else 0.0,
-        "filtered_frequencies_hz": [TARGET_FREQS_HZ[0], TARGET_FREQS_HZ[1]],
+        "filtered_frequencies_hz": [float(freq) for freq in filtered_frequencies_hz],
         "filter_relative_margin": float(relative_margin),
         "filter_order": int(filter_order),
+        "band_gain": float(band_gain),
         "block_size_samples": int(processed["block_size"]),
         "num_frames": int(processed["times"].size),
         "generated_files": [
