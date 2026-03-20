@@ -1,4 +1,3 @@
-import csv
 import os
 import queue
 import wave
@@ -6,61 +5,38 @@ from datetime import datetime
 from scipy import signal
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import sounddevice as sd
 from matplotlib.animation import FuncAnimation
+from utils import save_angle,save_wav,calculate_angle,detect_interest_noise
 
 # =========================
 # Configuration
 # =========================
 SAMPLE_RATE = 96000                     # Sample rate in Hz
-BLOCK_SIZE = 16384                      # Number of samples per callback block
+BLOCK_SIZE = 0.5                        # Time per block in second
+BLOCK_TIME = BLOCK_SIZE*SAMPLE_RATE     # Number of samples per callback block
 DISPLAYED_TIME = 3                      # Duration in which the signal is displayed
 NUM_SAMPLES_DISPLAYED = DISPLAYED_TIME*SAMPLE_RATE   # Number of samples displayed according to the time and sample rate
 CHANNELS = 2                            # Bi-directionnal mic with Focusrite card
 DEVICE =  1                             # None = system default input device, else check device with "python -m sounddevice"
 SAVE_AUDIO = True                       # Save recorded audio to WAV when window closes
+SAVE_ANGLES = True                      # Save measured angle to a csv file
 OUTPUT_DIR = "output"                   # Output directory for generated files
 DETECTION_THRESHOLD = 0.6               # Detection threshold for calculating angles
-C_WATER = 1500                          # Celerity of sound in the medium tested in m/S
+C_WATER = 1500                          # Celerity of sound in the medium tested in m/s
 DISTANCE_MICROPHONES=1                  # Distance between microphones in m
 
 # Thread-safe queue for audio blocks from callback
 audio_q = queue.Queue()
 
 
-def audio_callback(indata, frames, time, status):
+def audio_callback(indata, status):
     """Audio callback: push each incoming block to queue."""
     if status:
         print(status)
     # indata shape: (frames, channels)
     audio_q.put(indata.copy())
-
-
-def save_wav(path, audio_float, sample_rate):
-    """Save normalized float32 audio [-1,1] to mono 16-bit PCM WAV."""
-    audio_clipped = np.clip(audio_float, -1.0, 1.0)
-    audio_int16 = (audio_clipped * 32767.0).astype(np.int16)
-    with wave.open(path, "wb") as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)  # int16
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(audio_int16.tobytes())
-
-def calculate_angle(first_sample,second_sample):
-    correlation = signal.correlate(first_sample,second_sample,mode="full") # Calculation of the correlation between signals
-    max_corr = np.argmax(correlation)
-    center = len(first_sample) -1 # Calculate the index of the sample where the signals are taken with any lag
-    retard_sample = max_corr - center
-    delta_t = retard_sample/SAMPLE_RATE
-    ratio = (C_WATER * delta_t) / DISTANCE_MICROPHONES
-    ratio = np.clip(ratio, -1.0, 1.0)
-    return (np.pi/2 - np.arcsin(ratio))*180/np.pi
-
-def detect_interest_noise(first_sample,second_sample):
-    pic = np.max(np.abs(first_sample))
-    if pic > DETECTION_THRESHOLD:
-        return True
-    return False 
 
 def main():
     # Set up plot
@@ -88,6 +64,8 @@ def main():
     recorded_blocks_first= []
     recorded_blocks_second=[]
     angles = []
+    begin_time_angle = []
+    end_time_angle = []
     processed_blocks = 0
 
     def update(_frame):
@@ -99,10 +77,13 @@ def main():
             block = audio_q.get()
             first_audio,second_audio = block[:,0],block[:,1]
             processed_blocks += 1
-            if detect_interest_noise(first_audio, second_audio):
-                angle = calculate_angle(first_audio, second_audio)
-                angles.append(angle)
-                print(f"Measured angle: {angle}")
+            # if detect_interest_noise(first_audio, second_audio):
+            #     angle = calculate_angle(first_audio, second_audio)
+            #     print(f"Measured angle: {angle}")
+                #if SAVE_AUDIO:
+                    #     angles.append(angle)
+                    #     begin_time_angle.append((processed_blocks-1)*BLOCK_TIME)
+                    #     end_time_angle.append((processed_blocks)*BLOCK_TIME)
             first_signal_plot,second_signal_plot = np.roll(first_signal_plot, -BLOCK_SIZE),np.roll(second_signal_plot,-BLOCK_SIZE)
             first_signal_plot[-BLOCK_SIZE:]=first_audio
             second_signal_plot[-BLOCK_SIZE:]=second_audio
@@ -115,7 +96,7 @@ def main():
             if SAVE_AUDIO:
                 recorded_blocks_first.append(first_audio.astype(np.float32))
                 recorded_blocks_second.append(second_audio.astype(np.float32))
-
+                
         return time_first, time_second
 
     # Start input stream
@@ -141,8 +122,11 @@ def main():
         wav_path_second = os.path.join(OUTPUT_DIR, f"mic_audio_{stamp}_second.wav")
         save_wav(wav_path_first, audio_first, SAMPLE_RATE)
         save_wav(wav_path_second,audio_second, SAMPLE_RATE)
-
-
+    if SAVE_ANGLES and angles:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(OUTPUT_DIR,f"angles_saved_{stamp}.csv")
+        save_angle(path=path,angles=angles,begin_time=begin_time_angle,end_time=end_time_angle)
 
 if __name__ == "__main__":
     print("Starting real-time microphone recorder.")

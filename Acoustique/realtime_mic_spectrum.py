@@ -3,19 +3,19 @@ import os
 import queue
 import wave
 from datetime import datetime
-
 import matplotlib.pyplot as plt
 import numpy as np
 import sounddevice as sd
 from matplotlib.animation import FuncAnimation
+from utils import save_wav
 
 # =========================
 # Configuration
 # =========================
-SAMPLE_RATE = 16000       # Sample rate in Hz
-BLOCK_SIZE = 1024         # Number of samples per callback block
+SAMPLE_RATE = 192000       # Sample rate in Hz
+BLOCK_SIZE = 192000        # Number of samples per callback block
 CHANNELS = 1              # Laptop mic is typically mono
-DEVICE = None             # None = system default input device
+DEVICE = 1                # None = system default input device
 SAVE_AUDIO = True         # Save recorded audio to WAV when window closes
 SAVE_SPECTRUM = True      # Save frame-by-frame spectrum to NPZ/CSV
 OUTPUT_DIR = "output"     # Output directory for generated files
@@ -30,20 +30,6 @@ def audio_callback(indata, frames, time, status):
         print(status)
     # indata shape: (frames, channels)
     audio_q.put(indata[:, 0].copy())
-
-
-def save_wav(path, audio_float, sample_rate):
-    """Save normalized float32 audio [-1,1] to mono 16-bit PCM WAV."""
-    if audio_float.size == 0:
-        return
-    audio_clipped = np.clip(audio_float, -1.0, 1.0)
-    audio_int16 = (audio_clipped * 32767.0).astype(np.int16)
-    with wave.open(path, "wb") as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)  # int16
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(audio_int16.tobytes())
-
 
 def main():
     # Set up plot
