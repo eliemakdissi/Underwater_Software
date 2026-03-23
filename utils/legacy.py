@@ -31,7 +31,7 @@ def correlation(first_sample, second_sample):
     second_sample_pad = np.pad(second_sample, (taille, taille), constant_values=(0,0))
     correlation = []
     for t in range(2*taille):
-        cor = np.sum(((first_sample - mean_first)*(second_sample[t : t+taille] - mean_second)))/(taille * np.sqrt(standard_first*standard_second))
+        cor = np.sum(((first_sample - mean_first)*(second_sample_pad[t : t+taille] - mean_second)))/(taille * np.sqrt(standard_first*standard_second))
         correlation.append(cor)
     max_cor = np.argmax(correlation)
     delay_center = max_cor - taille
