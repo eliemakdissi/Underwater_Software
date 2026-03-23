@@ -1,6 +1,3 @@
-# Underwater_Software
-Each subteam works within its own subfolder, and members (of each subteam) may create their own branches within their respective subfolders.
-=======
 # Underwater Acoustic Signal Analysis
 
 This repository processes underwater audio recordings, keeps selected beacon bands (single or double mode), and generates analysis artifacts (filtered WAV, spectrum, dominant frequency track, plots, and metadata).
@@ -144,4 +141,3 @@ python main.py --wav clean_record_sea.wav --mode double --band-gain 20
 ```
 
 Then open the newest folder under `output/` and inspect `analysis_plots.png` and `dominant_freq.csv`.
->>>>>>> 47bc00690e1e82c394d525717c72075d62a90ae6
