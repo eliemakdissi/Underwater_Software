@@ -47,3 +47,6 @@ def bandpass_filter(data, target_freq, sample_rate, relative_margin=0.03, order=
     lowcut, highcut = target_freq * (1 - relative_margin), target_freq * (1 + relative_margin)
     sos = signal.butter(order, [lowcut, highcut], fs=sample_rate, btype="band", output="sos")
     return signal.sosfilt(sos, data)
+
+def correlation():
+    pass
