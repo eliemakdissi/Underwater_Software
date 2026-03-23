@@ -118,22 +118,55 @@ Inside `output/<input_stem>_<timestamp>/`:
 - `analysis_plots.png`: waveform + spectrogram + dominant-frequency plot.
 - `metadata.json`: configuration and run summary.
 
-## 5) File-by-File Overview (One Sentence Each)
+## 5) Realtime Filter Experiments
+
+Experimental scripts support a fixed target band that can be toggled while running:
+- `Filter OFF`: raw microphone signal path.
+- `Filter ON`: stateful streaming band-pass around the configured target frequency.
+
+Common control:
+- Press `f` inside the matplotlib window to switch filter state.
+
+Simple reference entrypoint:
+
+```powershell
+cd E:\Underwater_Software
+python realtime\realtime_filtered_monitor.py
+```
+
+Additional experiment variants:
+
+```powershell
+python tests\exp_realtime_mic_spectrum.py
+python tests\exp_realtime_double_mic.py
+```
+
+Main config values are at the top of each experimental script:
+- `FILTER_TARGET_FREQ_HZ`
+- `FILTER_RELATIVE_MARGIN`
+- `FILTER_ORDER`
+- `FILTER_ENABLED_DEFAULT`
+
+## 6) File-by-File Overview (One Sentence Each)
 
 - `main.py`: Minimal CLI entrypoint that filters and analyzes one WAV file end-to-end.
 - `filter.md`: Technical note describing filter design and usage (`single`/`double` modes).
 - `plot_recorded_outputs.py`: Utility script to visualize saved WAV/NPZ/CSV outputs from previous recordings.
-- `realtime_mic_spectrum.py`: Real-time single-microphone recorder and spectrum analyzer with optional output saving.
-- `realtime_double_mic.py`: Real-time dual-microphone viewer/recorder prepared for angle-estimation workflows.
+- `realtime/realtime_mic_spectrum.py`: Real-time single-microphone recorder and spectrum analyzer (baseline/original).
+- `realtime/realtime_double_mic.py`: Real-time dual-microphone viewer/recorder prepared for angle-estimation workflows (baseline/original).
+- `realtime/realtime_filtered_monitor.py`: Minimal single-mic realtime monitor focused on filter ON/OFF control and live spectrum.
+- `tests/exp_realtime_mic_spectrum.py`: Experimental single-mic spectrum script with realtime filter toggle (`f`).
+- `tests/exp_realtime_double_mic.py`: Experimental dual-mic display script with shared realtime filter toggle (`f`).
 - `test_fft.py`: Lightweight FFT/WAV loading test script for quick local checks.
 - `mp3_spectre.ipynb`: Notebook for exploratory spectrum analysis experiments.
 - `utils/__init__.py`: Package export file exposing shared legacy utility functions.
 - `utils/legacy.py`: Shared low-level helpers for WAV saving, angle logic, and simple band-pass filtering.
+- `utils/realtime_filters.py`: Stateful realtime band-pass helpers (`sosfilt` + persistent zi) shared by realtime scripts.
 - `utils/audio_pipeline.py`: Core offline pipeline functions used by `main.py` (read/filter/analyze/save).
 - `input/clean_record_sea.wav`: Example input recording used by default commands.
 - `output/`: Generated result folders created by processing scripts.
 
-## 6) Typical End-to-End Example
+## 7) Typical End-to-End Example
 
 ```powershell
 cd E:\Underwater_Software
