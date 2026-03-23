@@ -71,6 +71,12 @@ def main():
         default=20.0,
         help="Gain applied after summing filtered bands (default: 20.0).",
     )
+    parser.add_argument(
+        "--overlap-rate",
+        type=float,
+        default = 0.7,
+        help="Overlap rate to perform FFT",
+    )
     args = parser.parse_args()
 
     input_dir = Path(args.input_dir).resolve()
@@ -86,6 +92,8 @@ def main():
         raise ValueError("--single-frequency must be positive.")
     if args.band_gain <= 0:
         raise ValueError("--band-gain must be positive.")
+    if args.overlap_rate <=0:
+        raise ValueError("--overlap-rate must be between 0 and 1.")
 
     if args.wav:
         candidate = Path(args.wav)

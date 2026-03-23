@@ -51,7 +51,7 @@ def selective_bandpass(data, sample_rate, target_freq, relative_margin=0.03, ord
 def apply_multi_band_filter(
     audio,
     sample_rate,
-    target_freqs,
+    target_freqs : list[np.float32],
     relative_margin=0.03,
     order=6,
     band_gain=20.0,
@@ -68,7 +68,8 @@ def apply_multi_band_filter(
     return filtered / peak if peak > 1.0 else filtered
 
 
-def process_audio(audio, sample_rate, block_size):
+def process_audio(audio, sample_rate, block_size,overlap_rate=0.7):
+    """From an audio file, process the Real Fast Fourier Transform. It performs a block-wise FFT with overlap between blocks and Hann window"""
     if audio.size < block_size:
         audio = np.concatenate([audio, np.zeros(block_size - audio.size, dtype=np.float32)])
 
@@ -77,25 +78,38 @@ def process_audio(audio, sample_rate, block_size):
     if padded_size > audio.size:
         audio = np.pad(audio, (0, padded_size - audio.size))
 
-    blocks = audio.reshape(n_blocks, block_size)
-    window = np.hanning(block_size).astype(np.float32)
-    freqs = np.fft.rfftfreq(block_size, d=1.0 / sample_rate).astype(np.float32)
+    # Set the number of elements to pick in the surrounding blocks for overlap
+    noverlap = int(block_size * overlap_rate)
+    freqs, t, Zxx = signal.stft(
+        audio, 
+        fs=sample_rate, 
+        window='hann', 
+        nperseg=block_size,
+        noverlap=noverlap,
+        return_onesided=True
+    )
+    Zxx = Zxx.T
+    mag = np.abs(Zxx) + 1e-10
+    spectrum_db = (20.0 * np.log10(mag)).astype(np.float32)
+    if mag.shape[1] > 1:
+        peak_indices = np.argmax(mag[:, 1:], axis=1) + 1
+        dominant_freqs = freqs[peak_indices]
+    else:
+        dominant_freqs = np.zeros_like(t)
 
-    spectrum_frames, dominant_freqs, frame_times = [], [], []
-    for idx, block in enumerate(blocks):
-        spec = np.fft.rfft(block * window)
-        mag = np.abs(spec) + 1e-10
-        spectrum_frames.append((20.0 * np.log10(mag)).astype(np.float32))
-        peak_idx = int(np.argmax(mag[1:]) + 1) if mag.size > 1 else 0
-        dominant_freqs.append(float(freqs[peak_idx]) if peak_idx < freqs.size else 0.0)
-        frame_times.append(float((idx + 1) * (block_size / sample_rate)))
+    # Calculation of the hop_size to return the delimitation between block-wise DFT
+    hop_size = int(block_size * (1 - overlap_rate))
+    hop_time = hop_size / sample_rate
+    max_time = len(audio) / sample_rate
+    boundaries = np.arange(0, max_time, hop_time)
 
     return {
-        "freqs": freqs,
-        "times": np.array(frame_times, dtype=np.float32),
-        "dominant_freqs": np.array(dominant_freqs, dtype=np.float32),
-        "spectrum_db": np.vstack(spectrum_frames).astype(np.float32),
+        "freqs": freqs.astype(np.float32),
+        "times": t.astype(np.float32),
+        "dominant_freqs": dominant_freqs.astype(np.float32),
+        "spectrum_db": spectrum_db,
         "block_size": int(block_size),
+        "boundaries": boundaries.astype(np.float32)
     }
 
 
@@ -144,7 +158,7 @@ def save_analysis_outputs(
     if wav_time.size:
         axes[0].set_xlim(0, wav_time[-1])
     axes[0].text(
-        0.02,
+        0.08,
         0.92,
         f"Band gain: x{band_gain:g}",
         transform=axes[0].transAxes,
@@ -165,10 +179,14 @@ def save_analysis_outputs(
         extent=extent,
         cmap="magma",
     )
+    # Vertical lines to show the separations between blocks
+    # for x in processed["boundaries"]:
+    #     axes[1].axvline(x=x, color='cyan', linestyle='--', zorder=10)
     axes[1].set_title("Spectrogram")
     axes[1].set_xlabel("Time (s)")
     axes[1].set_ylabel("Frequency (Hz)")
     fig.colorbar(image, ax=axes[1], label="Magnitude (dB)")
+
 
     axes[2].plot(times, processed["dominant_freqs"], linewidth=1.0)
     axes[2].set_title("Dominant Frequency Track")

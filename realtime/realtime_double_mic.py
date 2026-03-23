@@ -1,31 +1,23 @@
 import os
 import queue
-import sys
 import wave
 from datetime import datetime
-from pathlib import Path
 from scipy import signal
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sounddevice as sd
 from matplotlib.animation import FuncAnimation
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from utils.legacy import save_angle,save_wav,calculate_angle,detect_interest_noise
+from utils import save_angle,save_wav,calculate_angle,detect_interest_noise
 
 # =========================
 # Configuration
 # =========================
 SAMPLE_RATE = 96000                     # Sample rate in Hz
-BLOCK_DURATION_S = 0.5                  # Time per block in second
-BLOCK_SIZE = int(BLOCK_DURATION_S * SAMPLE_RATE)  # Number of samples per callback block
-BLOCK_TIME = BLOCK_SIZE / SAMPLE_RATE   # Block duration in seconds
+BLOCK_SIZE = 0.5                        # Time per block in second
+BLOCK_TIME = BLOCK_SIZE*SAMPLE_RATE     # Number of samples per callback block
 DISPLAYED_TIME = 3                      # Duration in which the signal is displayed
-NUM_SAMPLES_DISPLAYED = int(DISPLAYED_TIME * SAMPLE_RATE)   # Number of samples displayed according to the time and sample rate
+NUM_SAMPLES_DISPLAYED = DISPLAYED_TIME*SAMPLE_RATE   # Number of samples displayed according to the time and sample rate
 CHANNELS = 2                            # Bi-directionnal mic with Focusrite card
 DEVICE =  1                             # None = system default input device, else check device with "python -m sounddevice"
 SAVE_AUDIO = True                       # Save recorded audio to WAV when window closes
@@ -39,7 +31,7 @@ DISTANCE_MICROPHONES=1                  # Distance between microphones in m
 audio_q = queue.Queue()
 
 
-def audio_callback(indata, frames, time, status):
+def audio_callback(indata, status):
     """Audio callback: push each incoming block to queue."""
     if status:
         print(status)

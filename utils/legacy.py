@@ -23,17 +23,26 @@ def save_angle(path, angles, begin_time, end_time):
     data = {"begin_time": begin_time, "end_time": end_time, "angle": angles}
     pd.DataFrame(data).to_csv(path, index=False)
 
+def correlation(first_sample, second_sample):
+    """Calcule la corrélation entre deux signaux X et Y de même taille et renvoie le tau pour lequel on a le max de corrélation."""
+    taille = len(first_sample)
+    mean_first, standard_first = np.mean(first_sample), np.var(first_sample)
+    mean_second, standard_second = np.mean(second_sample), np.var(second_sample)
+    second_sample_pad = np.pad(second_sample, (taille, taille), constant_values=(0,0))
+    correlation = []
+    for t in range(2*taille):
+        cor = np.sum(((first_sample - mean_first)*(second_sample_pad[t : t+taille] - mean_second)))/(taille * np.sqrt(standard_first*standard_second))
+        correlation.append(cor)
+    max_cor = np.argmax(correlation)
+    delay_center = max_cor - taille
+    return delay_center
 
-def calculate_angle(first_sample, second_sample, sample_rate, distance_microphones, celerity):
+def calculate_angle(delay_samples, sample_rate, distance_microphones, celerity):
     """Calculate the angle between hydrophone baseline normal and beacon."""
-    correlation = signal.correlate(first_sample, second_sample, mode="full")
-    max_corr = np.argmax(correlation)
-    center = len(first_sample) - 1
-    delay_samples = max_corr - center
     delta_t = delay_samples / sample_rate
     ratio = (celerity * delta_t) / distance_microphones
     ratio = np.clip(ratio, -1.0, 1.0)
-    return (np.pi / 2 - np.arcsin(ratio)) * 180 / np.pi
+    return np.arcsin(ratio) * 180 / np.pi
 
 
 def detect_interest_noise(first_sample, detection_threshold):
