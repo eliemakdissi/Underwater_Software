@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import sounddevice as sd
 from matplotlib.animation import FuncAnimation
-from utils import save_angle,save_wav,calculate_angle,detect_interest_noise
+from utils.legacy import save_angle,save_wav,calculate_angle, correlation
+from utils.audio_pipeline import selective_bandpass, apply_multi_band_filter
 
 # =========================
 # Configuration
@@ -26,6 +27,7 @@ OUTPUT_DIR = "output"                   # Output directory for generated files
 DETECTION_THRESHOLD = 0.6               # Detection threshold for calculating angles
 C_WATER = 1500                          # Celerity of sound in the medium tested in m/s
 DISTANCE_MICROPHONES=1                  # Distance between microphones in m
+TARGET_FREQS = [8.8e3, 37.5e3]
 
 # Thread-safe queue for audio blocks from callback
 audio_q = queue.Queue()
@@ -77,6 +79,15 @@ def main():
             block = audio_q.get()
             first_audio,second_audio = block[:,0],block[:,1]
             processed_blocks += 1
+            first_audio = apply_multi_band_filter(first_audio, SAMPLE_RATE, TARGET_FREQS[0])
+            second_audio = apply_multi_band_filter(second_audio, SAMPLE_RATE, TARGET_FREQS[0])
+            delay_center = correlation(first_audio, second_audio)
+            angle = calculate_angle(delay_center, SAMPLE_RATE, DISTANCE_MICROPHONES, C_WATER)
+            print(f"Measured angle: {angle}°")
+            if SAVE_AUDIO:
+                angles.append(angle)
+                begin_time_angle.append((processed_blocks-1)*BLOCK_TIME)
+                end_time_angle.append((processed_blocks)*BLOCK_TIME)
             # if detect_interest_noise(first_audio, second_audio):
             #     angle = calculate_angle(first_audio, second_audio)
             #     print(f"Measured angle: {angle}")
