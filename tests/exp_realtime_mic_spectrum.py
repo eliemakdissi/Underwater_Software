@@ -5,6 +5,7 @@ import sys
 import wave
 from datetime import datetime
 from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import sounddevice as sd
@@ -14,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils import save_wav
+from utils import StreamingBandpassFilter, save_wav
 
 # =========================
 # Configuration
@@ -26,6 +27,11 @@ DEVICE = 1                # None = system default input device
 SAVE_AUDIO = True         # Save recorded audio to WAV when window closes
 SAVE_SPECTRUM = True      # Save frame-by-frame spectrum to NPZ/CSV
 OUTPUT_DIR = "output"     # Output directory for generated files
+FILTER_TARGET_FREQ_HZ = 37500.0
+FILTER_RELATIVE_MARGIN = 0.03
+FILTER_ORDER = 6
+FILTER_ENABLED_DEFAULT = False
+TOGGLE_KEY = "v"
 
 # Thread-safe queue for audio blocks from callback
 audio_q = queue.Queue()
@@ -33,10 +39,12 @@ audio_q = queue.Queue()
 
 def audio_callback(indata, frames, time, status):
     """Audio callback: push each incoming block to queue."""
+    del frames, time
     if status:
         print(status)
     # indata shape: (frames, channels)
     audio_q.put(indata[:, 0].copy())
+
 
 def main():
     # Set up plot
@@ -65,6 +73,28 @@ def main():
     dominant_text = ax_freq.text(
         0.02, 0.92, "Dominant: -- Hz", transform=ax_freq.transAxes
     )
+    filter_enabled = FILTER_ENABLED_DEFAULT
+    stream_filter = StreamingBandpassFilter.from_frequency(
+        sample_rate=SAMPLE_RATE,
+        target_freq=FILTER_TARGET_FREQ_HZ,
+        relative_margin=FILTER_RELATIVE_MARGIN,
+        order=FILTER_ORDER,
+    )
+
+    def filter_label_text():
+        state = "ON" if filter_enabled else "OFF"
+        return (
+            f"Filter: {state} ({FILTER_TARGET_FREQ_HZ:.1f} Hz) | "
+            f"Press '{TOGGLE_KEY}' to toggle"
+        )
+
+    filter_status_text = ax_time.text(
+        0.02,
+        0.92,
+        filter_label_text(),
+        transform=ax_time.transAxes,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.7},
+    )
 
     # Buffers for saving
     recorded_blocks = []
@@ -73,11 +103,26 @@ def main():
     frame_times = []
     processed_blocks = 0
 
+    def on_key_press(event):
+        nonlocal filter_enabled
+        if event.key == TOGGLE_KEY:
+            filter_enabled = not filter_enabled
+            filter_status_text.set_text(filter_label_text())
+            print(f"Filter toggled {'ON' if filter_enabled else 'OFF'}.")
+
+    fig.canvas.mpl_connect("key_press_event", on_key_press)
+
     def update(_frame):
         nonlocal processed_blocks
         # If data is available, take the latest block
         if not audio_q.empty():
             block = audio_q.get()
+            if block.size != BLOCK_SIZE:
+                return time_line, freq_line, dominant_text, filter_status_text
+
+            if filter_enabled:
+                block = stream_filter.process_block(block)
+
             processed_blocks += 1
             current_time = processed_blocks * (BLOCK_SIZE / SAMPLE_RATE)
 
@@ -103,7 +148,7 @@ def main():
                 dominant_freqs.append(float(dom_freq))
                 frame_times.append(float(current_time))
 
-        return time_line, freq_line, dominant_text
+        return time_line, freq_line, dominant_text, filter_status_text
 
     # Start input stream
     with sd.InputStream(
@@ -155,7 +200,8 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Starting real-time microphone spectrum analyzer.")
+    print("Starting experimental real-time microphone spectrum analyzer.")
+    print(f"Press '{TOGGLE_KEY}' in the plot window to toggle filter ON/OFF.")
     print("Close the plot window to exit.")
     print("Default device setting:", sd.default.device)
     main()
