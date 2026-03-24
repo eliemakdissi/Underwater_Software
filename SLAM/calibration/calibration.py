@@ -3,7 +3,9 @@ import cv2
 import glob
 import pickle
 
-def ini_calib():
+"""ATTENTION : L'implémentation en fisheye n'a pas été terminée car jugée inutile, donc elle ne marche à priori pas."""
+
+def ini_calib(fisheye=0):
     """permet de calculer les paramètres de la caméra à partir d'un set de photos de calibration"""
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -34,25 +36,39 @@ def ini_calib():
             imgpoints.append(corners2)
 
             # Draw and display the corners
-            cv2.drawChessboardCorners(img, (9,7), corners2, ret)
+            # cv2.drawChessboardCorners(img, (9,7), corners2, ret)
+            # cv2.imshow('img', img)
+            # cv2.waitKey(0)
+        else:
+            # cv2.imshow('img', img)
+            # cv2.waitKey(0)
+            pass
     print("nb d'images non reconnues : ", len(images)-i)
     cv2.destroyAllWindows()
-    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
     img = cv2.imread('SLAM/calibration/controle.jpg')
     h,  w = img.shape[:2]
-    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
+    if fisheye ==1:
+        ret, mtx, dist, rvecs, tvecs = cv2.fisheye.calibrate(np.reshape(objpoints,(np.shape(objpoints)[0],np.shape(objpoints)[1],1,np.shape(objpoints)[2])), imgpoints, gray.shape[::-1], None, None)
+        newcameramtx = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(mtx, dist, (w,h), np.eye(3), (w,h))
+    else:
+        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+        newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w,h), 0, (w,h))
+
+    print("erreur de reprojection ?:", ret)
     return [mtx, dist, newcameramtx, roi]
 
-def cor_calib(img,mtx,dist,newcameramtx, roi):
+def cor_calib(img,mtx,dist,newcameramtx, roi,fisheye=0, crop=1):
     """corrige la distorsion et refait l'échelle de l'image"""
     h,  w = img.shape[:2]
-
     # undistort
-    dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
-
+    if fisheye==1:
+        dst = cv2.fisheye.undistortImage(img, mtx, dist, None, newcameramtx)
+    else:
+        dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
     # crop the image
-    x, y, w, h = roi
-    dst = dst[y:y+h, x:x+w]
+    if crop ==1:
+        x, y, w, h = roi
+        dst = dst[y:y+h, x:x+w]
     return dst
 
 def test_calib(mtx, dist, newcameramtx, roi):
@@ -63,19 +79,19 @@ def test_calib(mtx, dist, newcameramtx, roi):
     cv2.imshow('image originale',img)
     cv2.imshow('image corrigee',cor_calib(img,mtx,dist, newcameramtx, roi))
     cv2.waitKey()
-    cv2.imwrite('SLAM/calibration/controle_corrigee_c2.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
+    cv2.imwrite('SLAM/calibration/controle_corrigee_c2f.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
 
-# Sauvegarde des paramètres calculés
-# with open("SLAM/calibration/parametres_calib2.txt", 'wb') as f:
+# Sauvegarde de nouveaux paramètres calculés
+# with open("SLAM/calibration/parametres_calib2f.txt", 'wb') as f:
 #     l= ini_calib()
 #     print(l)
 #     pickle.dump(l, f)
 
-# Calcul de nouveaux paramètres
-# mtx, dist, newcameramtx, roi = l
+# Calcul de nouveaux paramètres, test
+# mtx, dist, newcameramtx, roi = ini_calib()
+# print(mtx, dist, newcameramtx, roi)
 # test_calib(mtx, dist, newcameramtx, roi)
 
 # Récupération de paramètres
 # with open("SLAM/calibration/parametres_calib2.txt", 'rb') as f:
 #     param = pickle.load(f)
-#     print(param)

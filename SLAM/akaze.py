@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import pickle
+import numpy as np
 from pathlib import Path
+from calibration.calibration import cor_calib
+from preprocess import cl_correction
 
 import cv2
 
@@ -29,7 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Nombre maximal de frames a traiter (0 = illimite).",
     )
-    # Paramètres d'amélioration de l'image (CLAHE)
+    # Paramètres d'amélioration de l'image (CLAHE ou autre)
+    parser.add_argument("--enhancement-method", type=int, default=1, help= "Correction couleur d'image. 0 pour aucune correction, 1 pour CLAHE (air), 2 pour channel vert (eau), 3 pour correction proposée par la doc")
     parser.add_argument("--clip-limit", type=float, default=3.5)
     parser.add_argument("--tile-size", type=int, default=6)
     parser.add_argument("--min-response-ratio", type=float, default=0.0)
@@ -68,9 +73,10 @@ def main() -> int:
         return 1
 
     if not use_video_file:
-        capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        capture.set(cv2.CAP_PROP_FPS, 30)
+        capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        capture.set(cv2.CAP_PROP_FPS, 15)
 
     wait_time_ms = 1
     fps = capture.get(cv2.CAP_PROP_FPS)
@@ -82,13 +88,16 @@ def main() -> int:
         clipLimit=args.clip_limit,
         tileGridSize=(args.tile_size, args.tile_size),
     )
-    
+    # Récupération de paramètres caméra
+    with open("SLAM/calibration/parametres_calib2.txt", 'rb') as f:
+        mtx, dist, newcameramtx, roi = pickle.load(f)
+
     # Initialisation de AKAZE au lieu de ORB
     akaze = cv2.AKAZE_create(threshold=args.akaze_threshold)
 
     window_name = "Flux video AKAZE" if use_video_file else "Flux camera AKAZE"
     if not args.no_display:
-        cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow(window_name, cv2.WINDOW_KEEPRATIO)
 
     processed_frames = 0
     print(f"Source ouverte : {source_label}")
@@ -100,12 +109,23 @@ def main() -> int:
             print("Fin de la video." if use_video_file else "Lecture frame impossible.")
             break
 
-        # Traitement de l'image
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frame_enhanced = clahe.apply(frame_gray)
+        # Traitement couleur de l'image
+        if args.enhancement_method == 0:
+            frame_enhanced= cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        elif args.enhancement_method ==1:
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            frame_enhanced = clahe.apply(frame_gray)
+        elif args.enhancement_method == 2:
+            frame_enhanced = frame[:,:,1]
+        elif args.enhancement_method ==3:
+            frame_enhanced = cl_correction(frame)
+
+        # Traitement des déformations
+        
+        frame_undistorted = cor_calib(frame_enhanced, mtx, dist, newcameramtx, roi)
         
         # Extraction des points et descripteurs AKAZE
-        keypoints, descriptors = akaze.detectAndCompute(frame_enhanced, None)
+        keypoints, descriptors = akaze.detectAndCompute(frame_undistorted, None)
 
         detected_keypoints_count = len(keypoints)
         
@@ -130,7 +150,7 @@ def main() -> int:
 
         # Dessin des points
         frame_with_features = cv2.drawKeypoints(
-            frame_enhanced,
+            frame_undistorted,
             keypoints,
             None,
             color=(0, 255, 0),
