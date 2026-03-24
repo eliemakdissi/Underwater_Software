@@ -1,6 +1,8 @@
 import os
 import queue
-import wave
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 from datetime import datetime
 from scipy import signal
 import matplotlib.pyplot as plt
@@ -14,12 +16,12 @@ from utils import save_angle,save_wav,calculate_angle,detect_interest_noise
 # Configuration
 # =========================
 SAMPLE_RATE = 96000                     # Sample rate in Hz
-BLOCK_SIZE = 0.5                        # Time per block in second
-BLOCK_TIME = BLOCK_SIZE*SAMPLE_RATE     # Number of samples per callback block
+BLOCK_SIZE = 2048                       # Number of samples per callback block
+BLOCK_TIME = BLOCK_SIZE*SAMPLE_RATE     # Time per block in second
 DISPLAYED_TIME = 3                      # Duration in which the signal is displayed
 NUM_SAMPLES_DISPLAYED = DISPLAYED_TIME*SAMPLE_RATE   # Number of samples displayed according to the time and sample rate
 CHANNELS = 2                            # Bi-directionnal mic with Focusrite card
-DEVICE =  1                             # None = system default input device, else check device with "python -m sounddevice"
+DEVICE =  4                             # None = system default input device, else check device with "python -m sounddevice"
 SAVE_AUDIO = True                       # Save recorded audio to WAV when window closes
 SAVE_ANGLES = True                      # Save measured angle to a csv file
 OUTPUT_DIR = "output"                   # Output directory for generated files
@@ -31,7 +33,7 @@ DISTANCE_MICROPHONES=1                  # Distance between microphones in m
 audio_q = queue.Queue()
 
 
-def audio_callback(indata, status):
+def audio_callback(indata,frames,time,status):
     """Audio callback: push each incoming block to queue."""
     if status:
         print(status)
