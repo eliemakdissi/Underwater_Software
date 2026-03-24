@@ -39,6 +39,14 @@ Use Python 3.10+ (recommended):
 ```powershell
 cd E:\Underwater_Software
 python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Alternative (manual package install):
+
+```powershell
+cd E:\Underwater_Software
+python -m pip install --upgrade pip
 python -m pip install numpy scipy matplotlib pandas sounddevice
 ```
 

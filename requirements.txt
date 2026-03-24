@@ -1,0 +1,7 @@
+numpy
+scipy
+matplotlib
+pandas
+sounddevice
+pyqtgraph
+PyQt5

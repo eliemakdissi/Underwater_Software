@@ -10,6 +10,12 @@ from .realtime_filters import (
     design_bandpass_sos,
     process_multichannel_block,
 )
+from .realtime_wiener import BandpassWienerProcessor
+from .realtime_export import (
+    create_run_folder,
+    export_spectrogram_png,
+    export_waveform_png,
+)
 
 __all__ = [
     "save_wav",
@@ -20,4 +26,8 @@ __all__ = [
     "design_bandpass_sos",
     "StreamingBandpassFilter",
     "process_multichannel_block",
+    "BandpassWienerProcessor",
+    "create_run_folder",
+    "export_waveform_png",
+    "export_spectrogram_png",
 ]
