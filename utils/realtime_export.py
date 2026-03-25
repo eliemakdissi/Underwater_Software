@@ -19,14 +19,20 @@ def create_run_folder(output_root: str, prefix: str = "run") -> str:
     return run_dir
 
 
-def export_waveform_png(audio_mono: np.ndarray, sample_rate: float, output_dir: str) -> str:
+def export_waveform_png(
+    audio_mono: np.ndarray,
+    sample_rate: float,
+    output_dir: str,
+    filename: str = "waveform.png",
+    title: str = "Waveform (full session)",
+) -> str:
     """Save full-session waveform plot."""
-    path = os.path.join(output_dir, "waveform.png")
+    path = os.path.join(output_dir, filename)
     t_axis = np.arange(len(audio_mono), dtype=np.float64) / float(sample_rate)
 
     fig, ax = plt.subplots(figsize=(12, 4), dpi=150)
     ax.plot(t_axis, audio_mono, color="#1f77b4", linewidth=0.6)
-    ax.set_title("Waveform (full session)")
+    ax.set_title(title)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Amplitude")
     ax.grid(alpha=0.3)
@@ -42,9 +48,11 @@ def export_spectrogram_png(
     fft_size: int,
     hop_size: int,
     output_dir: str,
+    filename: str = "spectrogram.png",
+    title: str = "Spectrogram (full session)",
 ) -> str | None:
     """Save full-session spectrogram plot."""
-    path = os.path.join(output_dir, "spectrogram.png")
+    path = os.path.join(output_dir, filename)
     nperseg = min(int(fft_size), len(audio_mono))
     if nperseg < 8:
         return None
@@ -70,7 +78,7 @@ def export_spectrogram_png(
         vmin=-100,
         vmax=-20,
     )
-    ax.set_title("Spectrogram (full session)")
+    ax.set_title(title)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (kHz)")
     cbar = fig.colorbar(mesh, ax=ax)
