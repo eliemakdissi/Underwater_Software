@@ -72,16 +72,16 @@ def cor_calib(img,mtx,dist,newcameramtx, roi,fisheye=0, crop=1):
 
 def test_calib(mtx, dist, newcameramtx, roi):
     """permet de comparer l'image de base et l'image corrigée"""
-    img = cv2.imread('SLAM/calibration/controle2.jpg')
+    img = cv2.imread('SLAM/calibration/controle/controle2.jpg')
     cv2.namedWindow('image corrigee', cv2.WINDOW_KEEPRATIO)
     cv2.namedWindow('image originale', cv2.WINDOW_KEEPRATIO)
     cv2.imshow('image originale',img)
     cv2.imshow('image corrigee',cor_calib(img,mtx,dist, newcameramtx, roi))
     cv2.waitKey()
-    cv2.imwrite('SLAM/calibration/controle2calibeau.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
+    cv2.imwrite('SLAM/calibration//controle/controle2calibeau.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
 
 # Sauvegarde de nouveaux paramètres calculés
-# with open("SLAM/calibration/parametres_calibeau_deuxiemecam.txt", 'wb') as f:
+# with open("SLAM/calibration/param/parametres_calibeau_deuxiemecam.txt", 'wb') as f:
 #     l= ini_calib()
 #     print(l)
 #     pickle.dump(l, f)
