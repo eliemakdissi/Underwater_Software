@@ -17,7 +17,7 @@ def ini_calib(fisheye=0):
     # Arrays to store object points and image points from all the images.
     objpoints = [] # 3d point in real world space
     imgpoints = [] # 2d points in image plane.
-    images = glob.glob('SLAM/calibration/set_2/*.jpg')
+    images = glob.glob('SLAM/calibration/set_underwater_deuxiemecam/*.jpg')
     i=0
     for fname in images:
         img = cv2.imread(fname)
@@ -36,17 +36,16 @@ def ini_calib(fisheye=0):
             imgpoints.append(corners2)
 
             # Draw and display the corners
-            # cv2.drawChessboardCorners(img, (9,7), corners2, ret)
-            # cv2.imshow('img', img)
-            # cv2.waitKey(0)
+            cv2.drawChessboardCorners(img, (9,7), corners2, ret)
+            cv2.imshow('img', img)
+            cv2.waitKey(0)
         else:
             # cv2.imshow('img', img)
             # cv2.waitKey(0)
             pass
     print("nb d'images non reconnues : ", len(images)-i)
     cv2.destroyAllWindows()
-    img = cv2.imread('SLAM/calibration/controle.jpg')
-    h,  w = img.shape[:2]
+    h,  w = (1080,1920)
     if fisheye ==1:
         ret, mtx, dist, rvecs, tvecs = cv2.fisheye.calibrate(np.reshape(objpoints,(np.shape(objpoints)[0],np.shape(objpoints)[1],1,np.shape(objpoints)[2])), imgpoints, gray.shape[::-1], None, None)
         newcameramtx = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(mtx, dist, (w,h), np.eye(3), (w,h))
@@ -73,16 +72,16 @@ def cor_calib(img,mtx,dist,newcameramtx, roi,fisheye=0, crop=1):
 
 def test_calib(mtx, dist, newcameramtx, roi):
     """permet de comparer l'image de base et l'image corrigée"""
-    img = cv2.imread('SLAM/calibration/controle.jpg')
+    img = cv2.imread('SLAM/calibration/controle2.jpg')
     cv2.namedWindow('image corrigee', cv2.WINDOW_KEEPRATIO)
     cv2.namedWindow('image originale', cv2.WINDOW_KEEPRATIO)
     cv2.imshow('image originale',img)
     cv2.imshow('image corrigee',cor_calib(img,mtx,dist, newcameramtx, roi))
     cv2.waitKey()
-    cv2.imwrite('SLAM/calibration/controle_corrigee_c2f.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
+    cv2.imwrite('SLAM/calibration/controle2calibeau.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
 
 # Sauvegarde de nouveaux paramètres calculés
-# with open("SLAM/calibration/parametres_calib2f.txt", 'wb') as f:
+# with open("SLAM/calibration/parametres_calibeau_deuxiemecam.txt", 'wb') as f:
 #     l= ini_calib()
 #     print(l)
 #     pickle.dump(l, f)
@@ -95,3 +94,4 @@ def test_calib(mtx, dist, newcameramtx, roi):
 # Récupération de paramètres
 # with open("SLAM/calibration/parametres_calib2.txt", 'rb') as f:
 #     param = pickle.load(f)
+ 
