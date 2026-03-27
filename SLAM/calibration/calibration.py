@@ -17,7 +17,7 @@ def ini_calib(fisheye=0):
     # Arrays to store object points and image points from all the images.
     objpoints = [] # 3d point in real world space
     imgpoints = [] # 2d points in image plane.
-    images = glob.glob('SLAM/calibration/set_underwater_deuxiemecam/*.jpg')
+    images = glob.glob('SLAM/calibration/set_doublecam/*r.jpg')
     i=0
     for fname in images:
         img = cv2.imread(fname)
@@ -81,10 +81,10 @@ def test_calib(mtx, dist, newcameramtx, roi):
     cv2.imwrite('SLAM/calibration//controle/controle2calibeau.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
 
 # Sauvegarde de nouveaux paramètres calculés
-# with open("SLAM/calibration/param/parametres_calibeau_deuxiemecam.txt", 'wb') as f:
-#     l= ini_calib()
-#     print(l)
-#     pickle.dump(l, f)
+with open("SLAM/calibration/param/parametres_calibeau_premierecam.txt", 'wb') as f:
+    l= ini_calib()
+    print(l)
+    pickle.dump(l, f)
 
 # Calcul de nouveaux paramètres, test
 # mtx, dist, newcameramtx, roi = ini_calib()
