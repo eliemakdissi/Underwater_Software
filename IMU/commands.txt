@@ -19,3 +19,13 @@ Even if you restart your computer, the "Bind" stays active.
 
 => Compile (The Action): ./waf sub
 (Run this every time you change your "Link Active" message or add logic).
+
+8) cd ~/Underwater_Software/IMU/ardupilot-master
+git add libraries/AP_ExternalAHRS/AP_ExternalAHRS_Orientus.*
+git commit -m "Orientus: Implemented packet ID 20 decoding"
+git push origin master
+
+cd ~/Underwater_Software/IMU
+git add ardupilot-master
+git commit -m "Submodule: Point to latest Orientus driver commit"
+git push origin main
