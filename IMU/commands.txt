@@ -1,0 +1,21 @@
+1) java -jar "C:\Users\victus-pc\Downloads\INSManager-8.0\INSManager-8.0.jar"
+
+2) ./anpp_log_decoder "/home/entropy/Underwater_Software/IMU/C/Example Logs/SpatialLog_13-06-21_13-46-42.anpp"
+
+3) You only need to run 'usbipd bind --busid 1-2' once.
+Windows will remember this forever (or until you unplug the device and plug it into a different USB port).
+Even if you restart your computer, the "Bind" stays active.
+
+4) You must run 'usbipd attach --wsl --busid 1-2' every time you plug the sensor in or restart your computer.
+
+5) sudo ./packet_example ttyUSB0 115200
+
+6) first get inside ardupilot-master folder inside IMU => click on Docker Desktop icon then in the tray and wait till the docker icon appears in the tray icons
+ => docker run --rm -it -v "$(pwd):/ardupilot" -u "$(id -u):$(id -g)" ardupilot:latest bash
+
+7) 
+=> Configure (The Map): ./waf configure --board navigator --no-submodule-update
+(Only needs to be run once, or if you add new files to a wscript) NOT after each restart.
+
+=> Compile (The Action): ./waf sub
+(Run this every time you change your "Link Active" message or add logic).
