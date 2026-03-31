@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import glob
 import pickle
+import g2o
 
 """ATTENTION : L'implémentation en fisheye n'a pas été terminée car jugée inutile, donc elle ne marche à priori pas."""
 
@@ -81,15 +82,15 @@ def test_calib(mtx, dist, newcameramtx, roi):
     cv2.imwrite('SLAM/calibration//controle/controle2calibeau.jpg',cor_calib(img,mtx,dist,newcameramtx, roi))
 
 # Sauvegarde de nouveaux paramètres calculés
-with open("SLAM/calibration/param/parametres_calibeau_premierecam.txt", 'wb') as f:
-    l= ini_calib()
-    print(l)
-    pickle.dump(l, f)
+# with open("SLAM/calibration/param/parametres_calibeau_premierecam.txt", 'wb') as f
+#     l= ini_calib()
+#     print(l)
+#     pickle.dump(l, f)
 
 # Calcul de nouveaux paramètres, test
-# mtx, dist, newcameramtx, roi = ini_calib()
-# print(mtx, dist, newcameramtx, roi)
-# test_calib(mtx, dist, newcameramtx, roi)
+mtx, dist, newcameramtx, roi = ini_calib()
+print(mtx, dist, newcameramtx, roi)
+test_calib(mtx, dist, newcameramtx, roi)
 
 # Récupération de paramètres
 # with open("SLAM/calibration/parametres_calib2.txt", 'rb') as f:
