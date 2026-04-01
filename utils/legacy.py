@@ -1,8 +1,9 @@
 import wave
-
+import time
 import numpy as np
 import pandas as pd
 from scipy import signal
+from .timer import time_it
 
 
 def save_wav(path, audio_float, sample_rate):
@@ -28,11 +29,8 @@ def correlation(first_sample, second_sample):
     taille = len(first_sample)
     mean_first, standard_first = np.mean(first_sample), np.var(first_sample)
     mean_second, standard_second = np.mean(second_sample), np.var(second_sample)
-    second_sample_pad = np.pad(second_sample, (taille, taille), constant_values=(0,0))
-    correlation = []
-    for t in range(2*taille):
-        cor = np.sum(((first_sample - mean_first)*(second_sample_pad[t : t+taille] - mean_second)))/(taille * np.sqrt(standard_first*standard_second))
-        correlation.append(cor)
+    normalized_first,normalized_second = (first_sample - mean_first)/standard_first,(second_sample - mean_second)/standard_second
+    correlation = signal.correlate(normalized_first,normalized_second,mode="full",method="fft")
     max_cor = np.argmax(correlation)
     delay_center = max_cor - taille
     return delay_center
@@ -42,7 +40,8 @@ def calculate_angle(delay_samples, sample_rate, distance_microphones, celerity):
     delta_t = delay_samples / sample_rate
     ratio = (celerity * delta_t) / distance_microphones
     ratio = np.clip(ratio, -1.0, 1.0)
-    return np.arcsin(ratio) * 180 / np.pi
+    angle = np.arcsin(ratio) * 180 / np.pi
+    return angle if abs(angle)!=90.0 else None
 
 
 def detect_interest_noise(first_sample, detection_threshold):

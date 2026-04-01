@@ -31,6 +31,9 @@ from .audio_devices import (
     add_input_output_devices,
     select_default_input_output_devices,
 )
+from .timer import(
+    time_it
+)
 
 __all__ = [
     "save_wav",
@@ -56,4 +59,5 @@ __all__ = [
     "mirror_input_to_output_channels",
     "add_input_output_devices",
     "select_default_input_output_devices",
+    "time_it",
 ]
