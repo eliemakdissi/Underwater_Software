@@ -7,21 +7,22 @@ import pickle
 import time
 import argparse
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+
 
 
 
 def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001, lowe : int = 0.8) :
 
     img_l_brute = cv.imread(PATH_IMG_L)
+    
     img_r_brute = cv.imread(PATH_IMG_R)
-
+    
     h, w = img_l_brute.shape[:2]
     IMAGE_SIZE = (w, h)
 
     print(IMAGE_SIZE)
 
-    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+    with open('/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
         params = pickle.load(f)
 
     # Preprocessing
@@ -174,7 +175,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
 
     # Visualisation
-    '''
+   
     vis_g = cv.cvtColor(img_l_clean, cv.COLOR_BGR2RGB)
     vis_d = cv.cvtColor(img_r_clean, cv.COLOR_BGR2RGB)
 
@@ -193,7 +194,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
-    '''
+    
 
     # On filtre les points aberrants trop loin (ex: > 15 mètres)
 
@@ -204,26 +205,27 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
     pts_g_clean = pts_g[mask]
     desc_l_clean = desc_l[index_g_clean]
 
-    '''
+    
     ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
     ax.set_xlabel('X (Largeur)')
     ax.set_ylabel('Z (Profondeur)')
     ax.set_zlabel('Y (Hauteur)')
     plt.title("Aperçu rapide du nuage de points")
     plt.show()
-    '''
+    
 
     return p3d, pts_g_clean, desc_l_clean 
 # La fonction renvoie le nuage 3d, la position X,Y sur l'image gauche des points matchés et leurs decripteurs
 
-parser = argparse.ArgumentParser(description='Pipeline Stéréo 3D avec AKAZE.')
-parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/set_3_caillou/frame_0002_l.jpg')
-parser.add_argument('--droite', help='Chemin image droite', default='SLAM/images_test/set_3_caillou/frame_0002_r.jpg')
-parser.add_argument("--akaze", type=float, default=0.00001, help="Seuil de détection AKAZE")
-parser.add_argument('--lowe', type=float, default=0.8, help='Ratio de Lowe')
-parser.add_argument('--ytol', type=float, default=10.0, help='Tolérance horizontale (pixels)')
-args = parser.parse_args()
+
 
 if __name__ == '__main__' :
-
+    parser = argparse.ArgumentParser(description='Pipeline Stéréo 3D avec AKAZE.')
+    parser.add_argument('--gauche', help='Chemin image gauche', default='/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/data_sortie_mer/frames/gauche/sortie_left.mp4_fixed/frames/frame_005138.jpg')
+    parser.add_argument('--droite', help='Chemin image droite', default='/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/data_sortie_mer/frames/droite/sortie_right.mp4_fixed/frames/frame_005138.jpg')
+    parser.add_argument("--akaze", type=float, default=0.00001, help="Seuil de détection AKAZE")
+    parser.add_argument('--lowe', type=float, default=0.8, help='Ratio de Lowe')
+    parser.add_argument('--ytol', type=float, default=10.0, help='Tolérance horizontale (pixels)')
+    args = parser.parse_args()
     generate_cloud(args.gauche, args.droite)
+
