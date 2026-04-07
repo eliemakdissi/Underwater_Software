@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 
-def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001, lowe : int = 0.8) :
+def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001, lowe : int = 0.8) :
 
     img_l_brute = cv.imread(PATH_IMG_L)
     
@@ -30,7 +30,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
     mapl_x, mapl_y = cv.initUndistortRectifyMap(params['mtx1'], params['dist1'], params['R1'], params['P1'], IMAGE_SIZE, cv.CV_32FC1)
     mapr_x, mapr_y = cv.initUndistortRectifyMap(params['mtx2'], params['dist2'], params['R2'], params['P2'], IMAGE_SIZE, cv.CV_32FC1)
 
-    print('map done')
+
 
     img_l_rect = cv.remap(img_l_brute, mapl_x, mapl_y, cv.INTER_LINEAR)
     img_r_rect = cv.remap(img_r_brute, mapr_x, mapr_y, cv.INTER_LINEAR)
@@ -160,11 +160,12 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
                     
             pts_g = np.float32(pts_g)
             pts_d = np.float32(pts_d)
-
+    '''
     print('--- Résultats AKAZE ---')
     print(f'# Keypoints Gauche:   \t {len(kpts_l)}')
     print(f'# Keypoints Droite:   \t {len(kpts_r)}')
     print(f'# Matchs valides :\t {len(pts_g)}')
+    '''
 
 
     # Triangulation 
@@ -173,7 +174,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
         points4D = cv.triangulatePoints(params['P1'], params['P2'], pts_g.T, pts_d.T)
         points3D = (points4D[:3, :] / points4D[3, :]).T
 
-
+    '''
     # Visualisation
    
     vis_g = cv.cvtColor(img_l_clean, cv.COLOR_BGR2RGB)
@@ -194,7 +195,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
-    
+    '''
 
     # On filtre les points aberrants trop loin (ex: > 15 mètres)
 
@@ -205,20 +206,21 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
     pts_g_clean = pts_g[mask]
     desc_l_clean = desc_l[index_g_clean]
 
-    
+    '''
     ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
     ax.set_xlabel('X (Largeur)')
     ax.set_ylabel('Z (Profondeur)')
     ax.set_zlabel('Y (Hauteur)')
     plt.title("Aperçu rapide du nuage de points")
     plt.show()
+    '''
     
 
     return p3d, pts_g_clean, desc_l_clean 
 # La fonction renvoie le nuage 3d, la position X,Y sur l'image gauche des points matchés et leurs decripteurs
 
 
-
+'''
 if __name__ == '__main__' :
     parser = argparse.ArgumentParser(description='Pipeline Stéréo 3D avec AKAZE.')
     parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/set_3_caillou/frame_0001_l.jpg')
@@ -228,4 +230,4 @@ if __name__ == '__main__' :
     parser.add_argument('--ytol', type=float, default=10.0, help='Tolérance horizontale (pixels)')
     args = parser.parse_args()
     generate_cloud(args.gauche, args.droite)
-
+'''
