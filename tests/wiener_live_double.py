@@ -1,6 +1,7 @@
 import os
 import queue
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 
 # Allow direct script execution from tests/ while still importing project packages.
@@ -23,11 +24,13 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from scipy import signal
 from scipy.io import wavfile
 from utils.audio_devices import (
     add_input_output_devices,
     select_default_input_output_devices,
 )
+from utils.legacy import calculate_angle, correlation
 from utils.realtime_export import (
     create_run_folder,
     export_spectrogram_png,
@@ -42,28 +45,109 @@ from utils.realtime_stream import (
     update_spectrogram_history,
     update_waveform_history,
 )
-from utils.realtime_wiener import BandpassWienerProcessor
-from utils.legacy import calculate_angle,correlation
-from utils.timer import time_it
 
 
 SAMPLE_RATE = 192000
-TARGET_FREQ_HZ = 8800.0
-TARGET_BANDWIDTH_HZ = 1000.0      
+TARGET_FREQS_HZ = (8800.0, 37500.0)
+TARGET_BANDWIDTH_HZ = 1000.0
 FILTER_ORDER = 4
 WIENER_WINDOW = 31
 INPUT_CHANNELS = 2
 OUTPUT_CHANNELS = 1
-DISTANCE_HYDROPHONES=1
-CELERITY=340                       # Celerity of sound in the considered in the considered field
-GUI_REFRESH = 150 
+DISTANCE_HYDROPHONES = 1
+CELERITY = 340
+GUI_REFRESH = 150
 
 
-class EnregistreurHydrophoneWienerDualMic(QMainWindow):
+@dataclass
+class MultiBandDoubleWienerProcessor:
+    """Realtime processor: multi-band band-pass + two Wiener passes."""
+
+    sample_rate: float
+    target_freqs: tuple[float, ...]
+    bandwidth_hz: float
+    order: int = 4
+    wiener_window: int = 31
+    _sos_filters: list[np.ndarray] = field(init=False, default_factory=list, repr=False)
+    _channel_zi: list[list[np.ndarray]] = field(init=False, default_factory=list, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.sample_rate <= 0:
+            raise ValueError("sample_rate must be positive.")
+        if not self.target_freqs:
+            raise ValueError("target_freqs must contain at least one frequency.")
+        if self.bandwidth_hz <= 0:
+            raise ValueError("bandwidth_hz must be positive.")
+        if self.order <= 0:
+            raise ValueError("order must be a positive integer.")
+
+        nyquist = self.sample_rate / 2.0
+        half_band = self.bandwidth_hz / 2.0
+        self._sos_filters = []
+        for target_freq in self.target_freqs:
+            if target_freq <= 0:
+                raise ValueError("All target frequencies must be positive.")
+            lowcut = float(target_freq) - half_band
+            highcut = float(target_freq) + half_band
+            if lowcut <= 0 or highcut >= nyquist:
+                raise ValueError(
+                    "Invalid band: each target +/- bandwidth_hz/2 must stay within (0, Nyquist)."
+                )
+            sos = signal.butter(
+                self.order,
+                [lowcut, highcut],
+                btype="bandpass",
+                fs=self.sample_rate,
+                output="sos",
+            ).astype(np.float32)
+            self._sos_filters.append(sos)
+
+    def reset(self) -> None:
+        self._channel_zi = []
+
+    def _ensure_channel_state(self, channels: int) -> None:
+        if channels <= 0:
+            raise ValueError("channels must be positive.")
+        if len(self._channel_zi) == channels:
+            return
+        self._channel_zi = []
+        for _ in range(channels):
+            channel_states = []
+            for sos in self._sos_filters:
+                channel_states.append(signal.sosfilt_zi(sos).astype(np.float32))
+            self._channel_zi.append(channel_states)
+
+    def process(self, data: np.ndarray) -> np.ndarray:
+        block = np.asarray(data, dtype=np.float32)
+        if block.ndim != 2:
+            raise ValueError("process expects shape (samples, channels).")
+        if block.size == 0:
+            return block.copy()
+
+        self._ensure_channel_state(block.shape[1])
+        filtered = np.empty_like(block, dtype=np.float32)
+        win_size = min(int(self.wiener_window), block.shape[0])
+        if win_size % 2 == 0:
+            win_size = max(1, win_size - 1)
+
+        for ch_idx in range(block.shape[1]):
+            combined_band = np.zeros(block.shape[0], dtype=np.float32)
+            for band_idx, sos in enumerate(self._sos_filters):
+                bandpassed, self._channel_zi[ch_idx][band_idx] = signal.sosfilt(
+                    sos, block[:, ch_idx], zi=self._channel_zi[ch_idx][band_idx]
+                )
+                combined_band += bandpassed.astype(np.float32, copy=False)
+            first_pass = signal.wiener(combined_band, mysize=win_size)
+            second_pass = signal.wiener(first_pass, mysize=win_size)
+            filtered[:, ch_idx] = second_pass.astype(np.float32, copy=False)
+        return filtered
+
+
+class EnregistreurHydrophoneWienerDualLive(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Hydrophone Recorder (Dual Mic Wiener Test)")
+        self.setWindowTitle("Hydrophone Recorder (Live Double Wiener)")
         self.samplerate = SAMPLE_RATE
         self.audio_data_for_save = []
         self.audio_queue_ch1 = queue.Queue()
@@ -75,11 +159,11 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
         self.dossier_session = None
 
         self.filter_enabled = False
-        self.filter_center_hz = TARGET_FREQ_HZ
+        self.filter_targets_hz = TARGET_FREQS_HZ
         self.filter_bandwidth_hz = TARGET_BANDWIDTH_HZ
-        self.filter_processor = BandpassWienerProcessor(
+        self.filter_processor = MultiBandDoubleWienerProcessor(
             sample_rate=self.samplerate,
-            target_freq=self.filter_center_hz,
+            target_freqs=self.filter_targets_hz,
             bandwidth_hz=self.filter_bandwidth_hz,
             order=FILTER_ORDER,
             wiener_window=WIENER_WINDOW,
@@ -118,7 +202,7 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
         self.combo_duree = QComboBox()
         self.combo_duree.setFont(pc)
         self.combo_duree.addItems(["1", "2", "5", "10", "15", "30", "60"])
-        self.combo_duree.setCurrentText("5")
+        self.combo_duree.setCurrentText("15")
         self.combo_duree.currentTextChanged.connect(self.changer_duree)
 
         lbl_fft = QLabel("FFT:")
@@ -145,7 +229,8 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
         self.combo_canaux.setEnabled(False)
 
         lbl_info_filtre = QLabel(
-            f"Target: {self.filter_center_hz:.0f} Hz +/- {self.filter_bandwidth_hz/2:.0f} Hz | P=toggle Wiener"
+            f"Targets: {self.filter_targets_hz[0]:.0f} Hz & {self.filter_targets_hz[1]:.0f} Hz "
+            f"+/- {self.filter_bandwidth_hz/2:.0f} Hz | P=toggle Wiener"
         )
         lbl_info_filtre.setFont(pc)
 
@@ -195,16 +280,12 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
         for w in [self.btn_demarrer, self.btn_arreter, self.btn_quitter, self.label_statut]:
             layout_top.addWidget(w)
 
-        self.lbl_measured_angle = QLabel(
-            f"Measured angle: {self.measured_angle:.1f}°"
-        )
+        self.lbl_measured_angle = QLabel(f"Measured angle: {self.measured_angle:.1f} deg")
         self.lbl_measured_angle.setFont(pc)
 
         layout_principal.addWidget(lbl_info_filtre)
         layout_principal.addLayout(layout_top)
         layout_principal.addWidget(self.lbl_measured_angle)
-
-        
 
         self.hist_fft_full_ch1 = None
         self.hist_fft_full_ch2 = None
@@ -243,7 +324,7 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
         )
 
         self.win_graph.nextRow()
-        self.max_freq_khz = self.samplerate/2000
+        self.max_freq_khz = self.samplerate / 2000
 
         self.plot_spectro_ch1 = self.win_graph.addPlot(title="Spectrogram CH1")
         self.plot_spectro_ch1.setLabel("left", "Frequency", units="kHz")
@@ -331,18 +412,18 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
 
     def callback_audio(self, indata, outdata, frames, time, status):
         data_in = indata.astype(np.float32, copy=False)
-        data_proc = self._apply_optional_filter(data_in)      # Dataprocessing through the filter
+        data_proc = self._apply_optional_filter(data_in)
 
-        self.audio_data_for_save.append(data_proc.copy())     # Saving the recorded audio
+        self.audio_data_for_save.append(data_proc.copy())
         if self.stream:
-            ch1 = data_proc[:, 0].astype(np.float32, copy=True) 
+            ch1 = data_proc[:, 0].astype(np.float32, copy=True)
             ch2 = data_proc[:, 1].astype(np.float32, copy=True) if data_proc.shape[1] > 1 else ch1
             self.audio_queue_ch1.put(ch1)
             self.audio_queue_ch2.put(ch2)
             self.session_waveform_ch1.append(ch1)
             self.session_waveform_ch2.append(ch2)
 
-        mirror_input_to_output_channels(data_proc, outdata)   # It was commented before
+        mirror_input_to_output_channels(data_proc, outdata)
 
     def update_charts(self):
         raw_ch1 = drain_audio_queue(self.audio_queue_ch1)
@@ -356,19 +437,21 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
             raw_ch2 = raw_ch1
         if raw_ch1 is None or raw_ch2 is None:
             return
+
         self.hist_onde_full_ch1 = update_waveform_history(self.hist_onde_full_ch1, raw_ch1)
         self.hist_onde_full_ch2 = update_waveform_history(self.hist_onde_full_ch2, raw_ch2)
 
-        # Calcul de l'angle
-        delay_samples = correlation(raw_ch1,raw_ch2)
-        measured_angle=calculate_angle(delay_samples,
-                                            sample_rate=self.samplerate,
-                                            distance_microphones=DISTANCE_HYDROPHONES,
-                                            celerity=CELERITY)
-        if measured_angle!=None:
+        delay_samples = correlation(raw_ch1, raw_ch2)
+        measured_angle = calculate_angle(
+            delay_samples,
+            sample_rate=self.samplerate,
+            distance_microphones=DISTANCE_HYDROPHONES,
+            celerity=CELERITY,
+        )
+        if measured_angle is not None:
             self.measured_angle = measured_angle
-            self.lbl_measured_angle.setText(f"Measured angle: {self.measured_angle:.1f}°")
-            
+            self.lbl_measured_angle.setText(f"Measured angle: {self.measured_angle:.1f} deg")
+
         skip = max(1, len(self.hist_onde_full_ch1) // 4000)
         self.curve_onde_ch1.setData(x=self.t_axis_onde[::skip], y=self.hist_onde_full_ch1[::skip])
         self.curve_onde_ch2.setData(x=self.t_axis_onde[::skip], y=self.hist_onde_full_ch2[::skip])
@@ -380,7 +463,6 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
             hop_size=self.hop_size,
         )
         if new_data_ch1 is not None:
-
             self.hist_fft_full_ch1 = update_spectrogram_history(
                 history=self.hist_fft_full_ch1,
                 new_data=new_data_ch1,
@@ -444,7 +526,7 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
                 )
 
             self.stream = sd.Stream(
-                device=(idx_in,idx_out),
+                device=(idx_in, idx_out),
                 samplerate=self.samplerate,
                 channels=(INPUT_CHANNELS, OUTPUT_CHANNELS),
                 blocksize=self.fft_size,
@@ -458,6 +540,8 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
             self.btn_demarrer.setEnabled(False)
             self.btn_arreter.setEnabled(True)
             self.combo_duree.setEnabled(False)
+            self.combo_fft.setEnabled(False)
+            self.combo_hop.setEnabled(False)
             self.combo_in.setEnabled(False)
             self.combo_out.setEnabled(False)
         except Exception as e:
@@ -539,6 +623,8 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
         self.btn_demarrer.setEnabled(True)
         self.btn_arreter.setEnabled(False)
         self.combo_duree.setEnabled(True)
+        self.combo_fft.setEnabled(True)
+        self.combo_hop.setEnabled(True)
         self.combo_in.setEnabled(True)
         self.combo_out.setEnabled(True)
         self.filter_processor.reset()
@@ -567,7 +653,9 @@ class EnregistreurHydrophoneWienerDualMic(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    pg.setConfigOptions(useOpenGL=True, antialias=False, foreground="k", background="w")
-    fenetre = EnregistreurHydrophoneWienerDualMic()
-    fenetre.showFullScreen()
+    # Keep GUI behavior consistent with the known-good test window:
+    # avoid OpenGL backend, which can break popup widgets on some Windows setups.
+    pg.setConfigOptions(antialias=True, foreground="k", background="w")
+    fenetre = EnregistreurHydrophoneWienerDualLive()
+    fenetre.showMaximized()
     sys.exit(app.exec_())
