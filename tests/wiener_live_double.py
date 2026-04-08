@@ -654,8 +654,8 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     # Keep GUI behavior consistent with the known-good test window:
-    # avoid OpenGL backend, which can break popup widgets on some Windows setups.
-    pg.setConfigOptions(antialias=True, foreground="k", background="w")
+    # chose to use OpenGL or not depending on the OS you use (Mac: useOpenGL=True, Windows: useOpenGL=False)
+    pg.setConfigOptions(useOpenGL=True,antialias=True, foreground="k", background="w")
     fenetre = EnregistreurHydrophoneWienerDualLive()
     fenetre.showMaximized()
     sys.exit(app.exec_())
