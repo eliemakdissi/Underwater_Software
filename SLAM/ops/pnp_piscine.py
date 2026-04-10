@@ -4,18 +4,19 @@ import pickle
 import cv2 as cv
 import open3d as o3d
 
-from generate_cloud import generate_cloud
+from orb_test import generate_cloud
 
-lowe = 0.8
+lowe = 0.4
 
 
 
-CALIB_GAUCHE = 'SLAM/calibration/param/parametres_calibeau_deuxiemecam.txt'
+CALIB_GAUCHE = '/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/calibration/param/parametres_calibeau_deuxiemecam.txt'
 with open(CALIB_GAUCHE, 'rb') as f:
-    mtx1, dist1, _, _ = pickle.load(f)
+    _, _, newcameramtx1, _ = pickle.load(f)
+dist1 = None
+PREVIOUS_PATH_IMG_L = '/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/data_sortie_mer/frames/gauche/sortie_left.mp4_fixed/frames/frame_010932.jpg'
+PREVIOUS_PATH_IMG_R = '/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/data_sortie_mer/frames/droite/sortie_right.mp4_fixed/frames/frame_010932.jpg'
 
-PREVIOUS_PATH_IMG_L = f'SLAM/images_test/set_3_caillou/frame_0002_l.jpg'
-PREVIOUS_PATH_IMG_R = f'SLAM/images_test/set_3_caillou/frame_0002_r.jpg'
 previous3d, previous2d, previous_desc = generate_cloud(PATH_IMG_L=PREVIOUS_PATH_IMG_L, PATH_IMG_R=PREVIOUS_PATH_IMG_R)
 nuage_global = [previous3d]
 
@@ -23,33 +24,51 @@ pose_camera_globale = np.eye(4)
 
 matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=False)
 
-for i in range (2,14) : 
+for i in range (10932,11000) : 
     
-    CURRENT_PATH_IMG_L = f'SLAM/images_test/set_3_caillou/frame_{i+1:04d}_l.jpg'
-    CURRENT_PATH_IMG_R = f'SLAM/images_test/set_3_caillou/frame_{i+1:04d}_r.jpg'
+    CURRENT_PATH_IMG_L = f'/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/data_sortie_mer/frames/gauche/sortie_left.mp4_fixed/frames/frame_00{i+1:06d}.jpg'
+    CURRENT_PATH_IMG_R = f'/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/data_sortie_mer/frames/droite/sortie_right.mp4_fixed/frames/frame_00{i+1:06d}.jpg'
+    print("Traitement de :", CURRENT_PATH_IMG_L)
+
     current3d, current2d, current_desc = generate_cloud(PATH_IMG_L=CURRENT_PATH_IMG_L, PATH_IMG_R=CURRENT_PATH_IMG_R)
 
-    # Matching
+    # 1. Matching
     knn_matches = matcher.knnMatch(previous_desc, current_desc, k=2)
 
-    # Filtrage de Lowe 
+    # 2. Filtrage de Lowe 
     mask1 = []
     mask2 = []
     
     for match in knn_matches:
-        if len(match)==2:
-            m,n = match
+        if len(match) == 2:
+            m, n = match
             if m.distance < n.distance * lowe:
                 mask1.append(m.queryIdx)
                 mask2.append(m.trainIdx)
 
-    
-    pts_3D_pnp = previous3d[mask1]
-    pts_2D_pnp = current2d[mask2]
+    # 3. Extraction EXACTE des points qui ont matché
+    pts_3D_pnp = np.array(previous3d[mask1], dtype=np.float32)
+    pts_2D_pnp = np.array(current2d[mask2], dtype=np.float32)
 
-    succes, rvec, tvec, inliers = cv.solvePnPRansac(objectPoints=pts_3D_pnp, imagePoints=pts_2D_pnp, cameraMatrix=mtx1, distCoeffs=dist1, flags=cv.SOLVEPNP_ITERATIVE)
+    # 4. Sécurité : Ne lancer PnP que si l'on a assez de points
+    if len(pts_3D_pnp) < 4 or len(pts_2D_pnp) < 4:
+        print("Pas assez de points pour lancer solvePnP")
+        continue # On passe à la frame suivante au lieu de planter
+        
+    elif len(pts_3D_pnp) != len(pts_2D_pnp):
+        print(" Erreur de correspondance.")
+        continue
 
-    if succes : 
+    # 5. Si tout est bon, on lance l'algo (ici on est en sécurité)
+    succes, rvec, tvec, inliers = cv.solvePnPRansac(
+        objectPoints=pts_3D_pnp, 
+        imagePoints=pts_2D_pnp, 
+        cameraMatrix=newcameramtx1, 
+        distCoeffs=dist1, 
+        flags=cv.SOLVEPNP_ITERATIVE
+    )
+
+    if succes and inliers is not None and len(inliers) > 10: 
 
         R, _ = cv.Rodrigues(rvec)
         T_local = np.eye(4)
@@ -63,6 +82,7 @@ for i in range (2,14) :
 
         nuage_global.append(current3d_aligne)
 
+        # On met à jour les "previous" uniquement si PnP a réussi !
         previous3d = current3d 
         previous2d = current2d
         previous_desc = current_desc

@@ -22,7 +22,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     print(IMAGE_SIZE)
 
-    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+    with open('/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
         params = pickle.load(f)
 
     # Preprocessing
@@ -40,7 +40,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     # Feature detection
 
-    orb = cv.ORB_create(nfeatures=20000)
+    orb = cv.ORB_create(nfeatures=50000)
     kpts_l = orb.detect(img_l_clean,None)   
     kpts_l, desc_l = orb.compute(img_l_clean,kpts_l)
     kpts_r = orb.detect(img_r_clean,None)
@@ -186,16 +186,16 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     combined = cv.hconcat([vis_g, vis_d])
 
-    plt.figure(figsize=(16, 8))
+    """  plt.figure(figsize=(16, 8))
     plt.title(f"Points utilisés pour la 3D ({len(pts_g)} Inliers)")
     plt.imshow(combined)
     plt.axis('off')
     plt.tight_layout()
-    plt.show()
+    plt.show() 
 
 
     fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
+    ax = fig.add_subplot(111, projection='3d') """
     
 
     # On filtre les points aberrants trop loin (ex: > 15 mètres)
@@ -208,13 +208,13 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     desc_l_clean = desc_l[index_g_clean]
 
     
-    ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
+    """ ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
     ax.set_xlabel('X (Largeur)')
     ax.set_ylabel('Z (Profondeur)')
     ax.set_zlabel('Y (Hauteur)')
     plt.title("Aperçu rapide du nuage de points")
-    plt.show()
-    
+    plt.show() """
+   
     
 
     return p3d, pts_g_clean, desc_l_clean 

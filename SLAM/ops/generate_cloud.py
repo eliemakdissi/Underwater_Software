@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 
 
 
-def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001, lowe : int = 0.8) :
-
+def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001, lowe : float = 0.8) :
+    
     img_l_brute = cv.imread(PATH_IMG_L)
     
     img_r_brute = cv.imread(PATH_IMG_R)
@@ -22,7 +22,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     print(IMAGE_SIZE)
 
-    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+    with open('/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
         params = pickle.load(f)
 
     # Preprocessing
@@ -39,7 +39,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     img_r_clean = preprocess.cl_correction(img_r_rect)
 
     # Feature detection
-
+    
     akaze = cv.AKAZE_create(threshold=akaze_t)
     kpts_l, desc_l = akaze.detectAndCompute(img_l_clean, None)
     kpts_r, desc_r = akaze.detectAndCompute(img_r_clean, None)
@@ -174,7 +174,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
         points4D = cv.triangulatePoints(params['P1'], params['P2'], pts_g.T, pts_d.T)
         points3D = (points4D[:3, :] / points4D[3, :]).T
 
-    '''
+    
     # Visualisation
    
     vis_g = cv.cvtColor(img_l_clean, cv.COLOR_BGR2RGB)
@@ -195,7 +195,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
-    '''
+    
 
     # On filtre les points aberrants trop loin (ex: > 15 mètres)
 
@@ -206,28 +206,31 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     pts_g_clean = pts_g[mask]
     desc_l_clean = desc_l[index_g_clean]
 
-    '''
+    
     ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
     ax.set_xlabel('X (Largeur)')
     ax.set_ylabel('Z (Profondeur)')
     ax.set_zlabel('Y (Hauteur)')
     plt.title("Aperçu rapide du nuage de points")
     plt.show()
-    '''
     
 
     return p3d, pts_g_clean, desc_l_clean 
 # La fonction renvoie le nuage 3d, la position X,Y sur l'image gauche des points matchés et leurs decripteurs
 
 
-'''
+
 if __name__ == '__main__' :
-    parser = argparse.ArgumentParser(description='Pipeline Stéréo 3D avec AKAZE.')
-    parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/set_3_caillou/frame_0001_l.jpg')
-    parser.add_argument('--droite', help='Chemin image droite', default='SLAM/images_test/set_3_caillou/frame_0001_r.jpg')
+    """ parser = argparse.ArgumentParser(description='Pipeline Stéréo 3D avec AKAZE.')
+    parser.add_argument('--gauche', help='Chemin image gauche', 
+                        #default='SLAM/images_test/set_3_caillou/frame_0001_l.jpg'
+                        )
+    parser.add_argument('--droite', help='Chemin image droite', 
+                        #default='SLAM/images_test/set_3_caillou/frame_0001_r.jpg'
+                        )
     parser.add_argument("--akaze", type=float, default=0.00001, help="Seuil de détection AKAZE")
     parser.add_argument('--lowe', type=float, default=0.8, help='Ratio de Lowe')
     parser.add_argument('--ytol', type=float, default=10.0, help='Tolérance horizontale (pixels)')
-    args = parser.parse_args()
-    generate_cloud(args.gauche, args.droite)
-'''
+    args = parser.parse_args() """
+    """ generate_cloud(args.gauche, args.droite) """
+
