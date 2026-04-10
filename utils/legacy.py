@@ -44,16 +44,3 @@ def calculate_angle(delay_samples, sample_rate, distance_microphones, celerity):
     ratio = np.clip(ratio, -1.0, 1.0)
     angle = np.arcsin(ratio) * 180 / np.pi
     return angle if abs(angle)!=90.0 else None
-
-
-def detect_interest_noise(first_sample, detection_threshold):
-    """Detect if a block amplitude passes the detection threshold."""
-    peak = np.max(np.abs(first_sample))
-    return bool(peak > detection_threshold)
-
-
-def bandpass_filter(data, target_freq, sample_rate, relative_margin=0.03, order=5):
-    """Filter a given signal with a selective bandpass filter."""
-    lowcut, highcut = target_freq * (1 - relative_margin), target_freq * (1 + relative_margin)
-    sos = signal.butter(order, [lowcut, highcut], fs=sample_rate, btype="band", output="sos")
-    return signal.sosfilt(sos, data)
