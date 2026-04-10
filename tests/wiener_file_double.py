@@ -1,5 +1,4 @@
 import os
-import queue
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,12 +10,12 @@ if PROJECT_ROOT not in sys.path:
 
 import numpy as np
 import pyqtgraph as pg
-import sounddevice as sd
 from PyQt5.QtCore import QRectF, Qt, QTimer
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication,
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -24,12 +23,9 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.io import wavfile
-from utils.audio_devices import (
-    add_input_output_devices,
-    select_default_input_output_devices,
-)
 from utils.legacy import calculate_angle, correlation
 from utils.realtime_export import (
     create_run_folder,
@@ -41,7 +37,6 @@ from utils.realtime_stream import (
     compute_spectrogram_width,
     drain_audio_queue,
     incremental_fft_db_columns,
-    mirror_input_to_output_channels,
     update_spectrogram_history,
     update_waveform_history,
 )
@@ -53,12 +48,12 @@ TARGET_BANDWIDTH_HZ = 1000.0
 FILTER_ORDER = 4
 WIENER_WINDOW = 31
 INPUT_CHANNELS = 2
-OUTPUT_CHANNELS = 1
-DISTANCE_HYDROPHONES = 0.6
+DISTANCE_HYDROPHONES = 0.62
 CELERITY = 1500
-GUI_REFRESH = 150
-NUM_BLOCKS_FOR_ANGLE_CALCULATION = 24                 # 192000/8192 = 23.475 donc on fait l'opération pour détecter le sample d'intérêt une fois qu'on a 24 blocs
+GUI_REFRESH = 50  # Increased from 150ms to match audio block rate (~42.7ms per block at 192kHz/8192 blocksize)
+NUM_BLOCKS_FOR_ANGLE_CALCULATION = 24
 ANGLE_BLOCK_SIZE = 4096
+
 
 @dataclass
 class MultiBandDoubleWienerProcessor:
@@ -144,20 +139,16 @@ class MultiBandDoubleWienerProcessor:
         return filtered
 
 
-class EnregistreurHydrophoneWienerDualLive(QMainWindow):
+class EnregistreurHydrophoneWienerDualFile(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Hydrophone Recorder (Live Double Wiener)")
+        self.setWindowTitle("Hydrophone Analyzer from File (Dual Wiener)")
         self.samplerate = SAMPLE_RATE
-        self.audio_data_for_save = []
-        self.audio_queue_ch1 = queue.Queue()
-        self.audio_queue_ch2 = queue.Queue()
-        #Queues for angle measurements
-        self.angle_queue_ch1 = queue.Queue()
-        self.angle_queue_ch2 = queue.Queue()
-
-        self.stream = None
+        self.file_path = None
+        self.audio_data = None
+        self.current_sample_index = 0
+        self.is_playing = False
         self.measured_angle = 0
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         self.output_root = os.path.join(project_root, "output")
@@ -182,25 +173,22 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
         self.overlap_buffer_ch1 = np.array([], dtype=np.float32)
         self.overlap_buffer_ch2 = np.array([], dtype=np.float32)
 
+        # For angle calculation queuing
+        self.angle_buffer_ch1 = []
+        self.angle_buffer_ch2 = []
+        self.angle_buffer_start_sample = None  # Track where angle buffer started
+        self.max_block_time = None  # Time of maximum amplitude block
+
+        # Vertical lines for angle markers
+        self.vline_spectro_ch1 = None
+        self.vline_spectro_ch2 = None
+
         widget_central = QWidget()
         layout_principal = QVBoxLayout()
         pc = QFont("Arial", 10)
 
         layout_top = QHBoxLayout()
         layout_top.setSpacing(8)
-
-        lbl_in = QLabel("In:")
-        lbl_in.setFont(pc)
-        self.combo_in = QComboBox()
-        self.combo_in.setFont(pc)
-
-        lbl_out = QLabel("Out:")
-        lbl_out.setFont(pc)
-        self.combo_out = QComboBox()
-        self.combo_out.setFont(pc)
-
-        add_input_output_devices(self.combo_in, self.combo_out)
-        select_default_input_output_devices(self.combo_in, self.combo_out)
 
         lbl_duree = QLabel("Hist(s):")
         lbl_duree.setFont(pc)
@@ -226,12 +214,8 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
         self.combo_hop.setCurrentText("1/2")
         self.combo_hop.currentTextChanged.connect(self.changer_parametres_calcul)
 
-        lbl_canaux = QLabel("Canaux:")
+        lbl_canaux = QLabel("Channels: 2 (Dual Mic)")
         lbl_canaux.setFont(pc)
-        self.combo_canaux = QComboBox()
-        self.combo_canaux.setFont(pc)
-        self.combo_canaux.addItems(["2 (Dual Mic)"])
-        self.combo_canaux.setEnabled(False)
 
         lbl_info_filtre = QLabel(
             f"Targets: {self.filter_targets_hz[0]:.0f} Hz & {self.filter_targets_hz[1]:.0f} Hz "
@@ -239,11 +223,46 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
         )
         lbl_info_filtre.setFont(pc)
 
+        self.btn_charger = QPushButton("Load File")
+        self.btn_charger.setFont(pc)
+        self.btn_charger.setStyleSheet(
+            "background-color:#1976D2;color:white;padding:6px;"
+            "border-radius:4px;font-weight:bold;"
+        )
+        self.btn_charger.clicked.connect(self.charger_fichier)
+
+        self.btn_demarrer = QPushButton("Play")
+        self.btn_demarrer.setFont(pc)
+        self.btn_demarrer.setStyleSheet(
+            "background-color:#d32f2f;color:white;padding:6px;"
+            "border-radius:4px;font-weight:bold;"
+        )
+        self.btn_demarrer.setEnabled(False)
+        self.btn_demarrer.clicked.connect(self.demarrer_lecture)
+
+        self.btn_arreter = QPushButton("Stop")
+        self.btn_arreter.setFont(pc)
+        self.btn_arreter.setStyleSheet(
+            "background-color:#388E3C;color:white;padding:6px;"
+            "border-radius:4px;font-weight:bold;"
+        )
+        self.btn_arreter.setEnabled(False)
+        self.btn_arreter.clicked.connect(self.arreter_lecture)
+
+        self.btn_quitter = QPushButton("Quit")
+        self.btn_quitter.setFont(pc)
+        self.btn_quitter.setStyleSheet(
+            "background-color:#555;color:white;padding:6px;border-radius:4px;"
+        )
+        self.btn_quitter.clicked.connect(self.close)
+
+        self.label_statut = QLabel("No file loaded")
+        self.label_statut.setFont(QFont("Arial", 10, QFont.Bold))
+
+        self.label_file = QLabel("")
+        self.label_file.setFont(pc)
+
         for w in [
-            lbl_in,
-            self.combo_in,
-            lbl_out,
-            self.combo_out,
             lbl_duree,
             self.combo_duree,
             lbl_fft,
@@ -251,45 +270,20 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
             lbl_hop,
             self.combo_hop,
             lbl_canaux,
-            self.combo_canaux,
         ]:
             layout_top.addWidget(w)
 
-        self.btn_demarrer = QPushButton("REC")
-        self.btn_demarrer.setFont(pc)
-        self.btn_demarrer.setStyleSheet(
-            "background-color:#d32f2f;color:white;padding:6px;"
-            "border-radius:4px;font-weight:bold;"
-        )
-        self.btn_demarrer.clicked.connect(self.demarrer_enregistrement)
-
-        self.btn_arreter = QPushButton("STOP")
-        self.btn_arreter.setFont(pc)
-        self.btn_arreter.setStyleSheet(
-            "background-color:#388E3C;color:white;padding:6px;"
-            "border-radius:4px;font-weight:bold;"
-        )
-        self.btn_arreter.setEnabled(False)
-        self.btn_arreter.clicked.connect(self.arreter_enregistrement)
-
-        self.btn_quitter = QPushButton("Quitter")
-        self.btn_quitter.setFont(pc)
-        self.btn_quitter.setStyleSheet(
-            "background-color:#555;color:white;padding:6px;border-radius:4px;"
-        )
-        self.btn_quitter.clicked.connect(self.close)
-
-        self.label_statut = QLabel("Filter: OFF")
-        self.label_statut.setFont(QFont("Arial", 10, QFont.Bold))
-
-        for w in [self.btn_demarrer, self.btn_arreter, self.btn_quitter, self.label_statut]:
-            layout_top.addWidget(w)
+        layout_buttons = QHBoxLayout()
+        for w in [self.btn_charger, self.btn_demarrer, self.btn_arreter, self.btn_quitter, self.label_statut]:
+            layout_buttons.addWidget(w)
 
         self.lbl_measured_angle = QLabel(f"Measured angle: {self.measured_angle:.1f} deg")
         self.lbl_measured_angle.setFont(pc)
 
         layout_principal.addWidget(lbl_info_filtre)
         layout_principal.addLayout(layout_top)
+        layout_principal.addLayout(layout_buttons)
+        layout_principal.addWidget(self.label_file)
         layout_principal.addWidget(self.lbl_measured_angle)
 
         self.hist_fft_full_ch1 = None
@@ -363,7 +357,40 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
         self.setCentralWidget(widget_central)
 
         self.timer_gui = QTimer()
-        self.timer_gui.timeout.connect(self.update_charts)
+        self.timer_gui.timeout.connect(self.process_next_block)
+
+    def charger_fichier(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Load Stereo WAV File", "", "WAV Files (*.wav)"
+        )
+        if not file_path:
+            return
+
+        try:
+            self.samplerate, self.audio_data = wavfile.read(file_path)
+
+            # Ensure data is float32 and stereo
+            self.audio_data = self.audio_data.astype(np.float32, copy=False)
+            if self.audio_data.ndim == 1:
+                self.audio_data = np.column_stack([self.audio_data, self.audio_data])
+            elif self.audio_data.shape[1] < 2:
+                self.audio_data = np.column_stack([self.audio_data[:, 0], self.audio_data[:, 0]])
+
+            self.file_path = file_path
+            self.current_sample_index = 0
+            self.is_playing = False
+
+            duration = len(self.audio_data) / self.samplerate
+            filename = os.path.basename(file_path)
+            self.label_file.setText(f"File: {filename} | Duration: {duration:.1f}s | SR: {self.samplerate}Hz")
+
+            self.label_statut.setText("File loaded")
+            self.label_statut.setStyleSheet("color:#388E3C;")
+            self.btn_demarrer.setEnabled(True)
+        except Exception as e:
+            self.label_statut.setText(f"Error: {e}")
+            self.label_statut.setStyleSheet("color:#d32f2f;")
+            print(e)
 
     def _reset_spectro(self):
         self.hist_fft_full_ch1 = None
@@ -380,10 +407,9 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
             return indata
         return self.filter_processor.process(indata)
 
-    def _set_recording_status(self):
-        filtre = "ON" if self.filter_enabled else "OFF"
-        self.label_statut.setText(f"REC | Wiener: {filtre}")
-        self.label_statut.setStyleSheet("color:#d32f2f;")
+    def _set_status(self, text, color):
+        self.label_statut.setText(text)
+        self.label_statut.setStyleSheet(f"color:{color};")
 
     def changer_duree(self, text):
         self.duree_visible = int(text)
@@ -415,71 +441,102 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
         )
         self._reset_spectro()
 
-    def callback_audio(self, indata, outdata, frames, time, status):
-        data_in = indata.astype(np.float32, copy=False)
-        data_proc = self._apply_optional_filter(data_in)
-
-        self.audio_data_for_save.append(data_proc.copy())
-        if self.stream:
-            ch1 = -data_proc[:, 0].astype(np.float32, copy=True)
-            ch2 = data_proc[:, 1].astype(np.float32, copy=True) if data_proc.shape[1] > 1 else ch1
-            self.audio_queue_ch1.put(ch1)
-            self.audio_queue_ch2.put(ch2)
-
-
-            # Saving queue for angle measurement
-            self.angle_queue_ch1.put(ch1)
-            self.angle_queue_ch2.put(ch2)
-            if self.angle_queue_ch1.qsize()==NUM_BLOCKS_FOR_ANGLE_CALCULATION:
-                self.update_angle()
-            self.session_waveform_ch1.append(ch1)
-            self.session_waveform_ch2.append(ch2)
-
-        mirror_input_to_output_channels(data_proc, outdata)
-
     def update_angle(self):
-        raw_ch1 = drain_audio_queue(self.angle_queue_ch1)
-        raw_ch2 = drain_audio_queue(self.angle_queue_ch2)
-        ch1_array = np.array(raw_ch1).reshape(-1, ANGLE_BLOCK_SIZE)
-        ch2_array = np.array(raw_ch2).reshape(-1,ANGLE_BLOCK_SIZE)
-        norm_ch1 = np.linalg.norm(ch1_array, axis=1)
-        highest_index = np.argmax(norm_ch1)
-        ch1_relevant,ch2_relevant = ch1_array[highest_index],ch2_array[highest_index]
-        delay_samples = correlation(ch1_relevant,ch2_relevant)
-        measured_angle = calculate_angle(
-            delay_samples,
-            sample_rate=self.samplerate,
-            distance_microphones=DISTANCE_HYDROPHONES,
-            celerity=CELERITY,
-        )
-        if measured_angle is not None:
-            self.measured_angle = measured_angle
-
-    def update_charts(self):
-        raw_ch1 = drain_audio_queue(self.audio_queue_ch1)
-        raw_ch2 = drain_audio_queue(self.audio_queue_ch2)
-        if raw_ch1 is None and raw_ch2 is None:
+        if len(self.angle_buffer_ch1) < NUM_BLOCKS_FOR_ANGLE_CALCULATION:
             return
 
-        if raw_ch1 is None:
-            raw_ch1 = raw_ch2
-        if raw_ch2 is None:
-            raw_ch2 = raw_ch1
-        if raw_ch1 is None or raw_ch2 is None:
+        raw_ch1 = np.concatenate(self.angle_buffer_ch1[:NUM_BLOCKS_FOR_ANGLE_CALCULATION])
+        raw_ch2 = np.concatenate(self.angle_buffer_ch2[:NUM_BLOCKS_FOR_ANGLE_CALCULATION])
+        NUM_SAMPLES_TOT = self.fft_size*NUM_BLOCKS_FOR_ANGLE_CALCULATION
+        time = np.linspace(0,NUM_SAMPLES_TOT/SAMPLE_RATE,NUM_SAMPLES_TOT)
+        plt.plot(time,raw_ch1,label="Chanel1")
+        plt.plot(time,raw_ch2,label="Chanel2")
+        plt.savefig("raw_signals.png")
+        plt.close()
+        
+        self.angle_buffer_ch1 = self.angle_buffer_ch1[NUM_BLOCKS_FOR_ANGLE_CALCULATION:]
+        self.angle_buffer_ch2 = self.angle_buffer_ch2[NUM_BLOCKS_FOR_ANGLE_CALCULATION:]
+
+        try:
+            ch1_array = raw_ch1.reshape(-1, ANGLE_BLOCK_SIZE)
+            ch2_array = raw_ch2.reshape(-1, ANGLE_BLOCK_SIZE)
+            norm_ch1 = np.linalg.norm(ch1_array, axis=1)
+            highest_index = np.argmax(norm_ch1)
+
+            # Calculate time of the maximum amplitude block
+            if self.angle_buffer_start_sample is not None:
+                max_block_sample = self.angle_buffer_start_sample + highest_index * ANGLE_BLOCK_SIZE
+                self.max_block_time = max_block_sample / self.samplerate
+            
+
+
+
+            ch1_relevant, ch2_relevant = ch1_array[highest_index], ch2_array[highest_index]
+            time = np.linspace(0,ANGLE_BLOCK_SIZE/SAMPLE_RATE,ANGLE_BLOCK_SIZE)
+            plt.plot(time,ch1_relevant,label="Chanel1")
+            plt.plot(time,ch2_relevant,label="Chanel2")
+            plt.savefig("interest_signals.png")
+            plt.close()
+            delay_samples = correlation(ch1_relevant, ch2_relevant)
+            measured_angle = calculate_angle(
+                delay_samples,
+                sample_rate=self.samplerate,
+                distance_microphones=DISTANCE_HYDROPHONES,
+                celerity=CELERITY,
+            )
+            if measured_angle is not None:
+                self.measured_angle = measured_angle
+                print(f"Angle calculated: {self.measured_angle:.1f}° at t={self.max_block_time:.2f}s")
+        except Exception as e:
+            print(f"Error in angle calculation: {e}")
+
+
+    def process_next_block(self):
+        if not self.is_playing or self.audio_data is None:
             return
 
-        self.hist_onde_full_ch1 = update_waveform_history(self.hist_onde_full_ch1, raw_ch1)
-        self.hist_onde_full_ch2 = update_waveform_history(self.hist_onde_full_ch2, raw_ch2)
+        # Get next block
+        end_index = min(self.current_sample_index + self.fft_size, len(self.audio_data))
+        block = self.audio_data[self.current_sample_index:end_index]
+
+        if len(block) == 0:
+            self.arreter_lecture()
+            return
+
+        # Pad if necessary
+        if len(block) < self.fft_size:
+            block = np.vstack([block, np.zeros((self.fft_size - len(block), 2), dtype=np.float32)])
+
+        # Process block
+        data_proc = self._apply_optional_filter(block)
+
+        ch1 = -data_proc[:, 0].astype(np.float32, copy=True)
+        ch2 = data_proc[:, 1].astype(np.float32, copy=True) if data_proc.shape[1] > 1 else ch1
+
+        # Store for angle calculation
+        if len(self.angle_buffer_ch1) == 0:
+            self.angle_buffer_start_sample = self.current_sample_index
+
+        self.angle_buffer_ch1.append(ch1.copy())
+        self.angle_buffer_ch2.append(ch2.copy())
+        if len(self.angle_buffer_ch1) >= NUM_BLOCKS_FOR_ANGLE_CALCULATION:
+            self.update_angle()
+
+        # Update waveform history
+        self.hist_onde_full_ch1 = update_waveform_history(self.hist_onde_full_ch1, ch1)
+        self.hist_onde_full_ch2 = update_waveform_history(self.hist_onde_full_ch2, ch2)
 
         self.lbl_measured_angle.setText(f"Measured angle: {self.measured_angle:.1f} deg")
 
+        # Update waveform plots
         skip = max(1, len(self.hist_onde_full_ch1) // 4000)
         self.curve_onde_ch1.setData(x=self.t_axis_onde[::skip], y=self.hist_onde_full_ch1[::skip])
-        self.curve_onde_ch2.setData(x=self.t_axis_onde[::skip], y=self.hist_onde_full_ch2[::skip])  
+        self.curve_onde_ch2.setData(x=self.t_axis_onde[::skip], y=self.hist_onde_full_ch2[::skip])
 
+        # Update spectrograms
         new_data_ch1, self.overlap_buffer_ch1 = incremental_fft_db_columns(
             overlap_buffer=self.overlap_buffer_ch1,
-            new_samples=raw_ch1,
+            new_samples=ch1,
             fft_size=self.fft_size,
             hop_size=self.hop_size,
         )
@@ -497,7 +554,7 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
 
         new_data_ch2, self.overlap_buffer_ch2 = incremental_fft_db_columns(
             overlap_buffer=self.overlap_buffer_ch2,
-            new_samples=raw_ch2,
+            new_samples=ch2,
             fft_size=self.fft_size,
             hop_size=self.hop_size,
         )
@@ -513,19 +570,35 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
             )
             self.img_spectro_ch2.setRect(QRectF(0, 0, self.duree_visible, self.max_freq_khz))
 
-    def demarrer_enregistrement(self):
-        self.audio_data_for_save = []
+        self.current_sample_index = end_index
+
+    def demarrer_lecture(self):
+        if self.audio_data is None:
+            return
+
+        self.current_sample_index = 0
+        self.is_playing = True
         self.session_waveform_ch1 = []
         self.session_waveform_ch2 = []
         self.overlap_buffer_ch1 = np.array([], dtype=np.float32)
         self.overlap_buffer_ch2 = np.array([], dtype=np.float32)
+        self.angle_buffer_ch1 = []
+        self.angle_buffer_ch2 = []
+        self.angle_buffer_start_sample = None
+        self.max_block_time = None
         self.hist_fft_full_ch1 = None
         self.hist_fft_full_ch2 = None
         self.filter_processor.reset()
         self.hist_onde_full_ch1.fill(0)
         self.hist_onde_full_ch2.fill(0)
 
-        self.dossier_session = create_run_folder(self.output_root, prefix="run")
+        # Clear any existing markers
+        if self.vline_spectro_ch1 is not None:
+            self.plot_spectro_ch1.removeItem(self.vline_spectro_ch1)
+            self.vline_spectro_ch1 = None
+        if self.vline_spectro_ch2 is not None:
+            self.plot_spectro_ch2.removeItem(self.vline_spectro_ch2)
+            self.vline_spectro_ch2 = None
 
         self.fft_size = int(self.combo_fft.currentText())
         self.hop_size = compute_hop_size(self.fft_size, self.combo_hop.currentText())
@@ -535,148 +608,96 @@ class EnregistreurHydrophoneWienerDualLive(QMainWindow):
             hop_size=self.hop_size,
         )
 
-        idx_in = self.combo_in.currentData()
-        idx_out = self.combo_out.currentData()
+        self.timer_gui.start(GUI_REFRESH)
 
-        try:
-            input_info = sd.query_devices(idx_in)
-            max_in = int(input_info.get("max_input_channels", 0))
-            if max_in < INPUT_CHANNELS:
-                raise ValueError(
-                    f"Selected input supports only {max_in} channel(s); dual mic needs {INPUT_CHANNELS}."
-                )
+        filtre = "ON" if self.filter_enabled else "OFF"
+        self._set_status(f"Playing | Wiener: {filtre}", "#d32f2f")
+        self.btn_demarrer.setEnabled(False)
+        self.btn_arreter.setEnabled(True)
+        self.combo_duree.setEnabled(False)
+        self.combo_fft.setEnabled(False)
+        self.combo_hop.setEnabled(False)
+        self.btn_charger.setEnabled(False)
 
-            self.stream = sd.Stream(
-                device=(idx_in, idx_out),
-                samplerate=self.samplerate,
-                channels=(INPUT_CHANNELS, OUTPUT_CHANNELS),
-                blocksize=self.fft_size,
-                callback=self.callback_audio,
-                dtype="float32",
-            )
-            self.stream.start()
-            self.timer_gui.start(GUI_REFRESH)
-
-            self._set_recording_status()
-            self.btn_demarrer.setEnabled(False)
-            self.btn_arreter.setEnabled(True)
-            self.combo_duree.setEnabled(False)
-            self.combo_fft.setEnabled(False)
-            self.combo_hop.setEnabled(False)
-            self.combo_in.setEnabled(False)
-            self.combo_out.setEnabled(False)
-        except Exception as e:
-            self.label_statut.setText(f"Erreur: {e}")
-            self.label_statut.setStyleSheet("color:#d32f2f;")
-            print(e)
-
-    def arreter_enregistrement(self):
+    def arreter_lecture(self):
         self.timer_gui.stop()
-        if self.stream:
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
+        self.is_playing = False
 
-        self.label_statut.setText("Sauvegarde...")
-        self.label_statut.setStyleSheet("color:#888;")
-        QApplication.processEvents()
+        if self.audio_data is not None:
+            self.dossier_session = create_run_folder(self.output_root, prefix="run")
 
-        if self.audio_data_for_save:
-            enregistrement_complet = np.vstack(self.audio_data_for_save)
-            horodatage = datetime.now().strftime("%Y%m%d_%Hh%Mm%Ss")
-            nom_fichier = f"hydro_dual_{horodatage}.wav"
-            dossier_cible = self.dossier_session or os.path.join(self.output_root, f"run_{horodatage}")
-            os.makedirs(dossier_cible, exist_ok=True)
-
-            wavfile.write(
-                os.path.join(dossier_cible, nom_fichier),
-                self.samplerate,
-                enregistrement_complet,
-            )
+            channel_1 = self.audio_data[:, 0]
+            channel_2 = self.audio_data[:, 1] if self.audio_data.shape[1] > 1 else self.audio_data[:, 0]
 
             try:
-                channel_1 = enregistrement_complet[:, 0]
-                channel_2 = (
-                    enregistrement_complet[:, 1]
-                    if enregistrement_complet.shape[1] > 1
-                    else enregistrement_complet[:, 0]
-                )
                 export_waveform_png(
                     channel_1,
                     self.samplerate,
-                    dossier_cible,
+                    self.dossier_session,
                     filename="waveform_ch1.png",
-                    title="Waveform CH1 (full session)",
+                    title="Waveform CH1 (full file)",
                 )
                 export_spectrogram_png(
                     channel_1,
                     self.samplerate,
                     self.fft_size,
                     self.hop_size,
-                    dossier_cible,
+                    self.dossier_session,
                     filename="spectrogram_ch1.png",
-                    title="Spectrogram CH1 (full session)",
+                    title="Spectrogram CH1 (full file)",
                 )
                 export_waveform_png(
                     channel_2,
                     self.samplerate,
-                    dossier_cible,
+                    self.dossier_session,
                     filename="waveform_ch2.png",
-                    title="Waveform CH2 (full session)",
+                    title="Waveform CH2 (full file)",
                 )
                 export_spectrogram_png(
                     channel_2,
                     self.samplerate,
                     self.fft_size,
                     self.hop_size,
-                    dossier_cible,
+                    self.dossier_session,
                     filename="spectrogram_ch2.png",
-                    title="Spectrogram CH2 (full session)",
+                    title="Spectrogram CH2 (full file)",
                 )
-            except Exception as export_error:
-                print(f"Erreur export figures: {export_error}")
 
-            self.label_statut.setText(f"OK {nom_fichier} ({os.path.basename(dossier_cible)})")
-            self.label_statut.setStyleSheet("color:#388E3C;")
-        else:
-            self.label_statut.setText("")
+                self._set_status(f"Analysis complete ({os.path.basename(self.dossier_session)})", "#388E3C")
+            except Exception as export_error:
+                self._set_status(f"Export error: {export_error}", "#d32f2f")
+                print(f"Export error: {export_error}")
 
         self.btn_demarrer.setEnabled(True)
         self.btn_arreter.setEnabled(False)
         self.combo_duree.setEnabled(True)
         self.combo_fft.setEnabled(True)
         self.combo_hop.setEnabled(True)
-        self.combo_in.setEnabled(True)
-        self.combo_out.setEnabled(True)
+        self.btn_charger.setEnabled(True)
         self.filter_processor.reset()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_P:
             self.filter_enabled = not self.filter_enabled
             self.filter_processor.reset()
-            if self.stream:
-                self._set_recording_status()
+            if self.is_playing:
+                filtre = "ON" if self.filter_enabled else "OFF"
+                self._set_status(f"Playing | Wiener: {filtre}", "#d32f2f")
             else:
                 filtre = "ON" if self.filter_enabled else "OFF"
-                self.label_statut.setText(f"Filter: {filtre}")
-                self.label_statut.setStyleSheet("color:#1976D2;")
+                self._set_status(f"Filter: {filtre}", "#1976D2")
             event.accept()
             return
         super().keyPressEvent(event)
 
     def closeEvent(self, event):
         self.timer_gui.stop()
-        if self.stream:
-            self.stream.stop()
-            self.stream.close()
         event.accept()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    # Keep GUI behavior consistent with the known-good test window:
-    # chose to use OpenGL or not depending on the OS you use (Mac: useOpenGL=True, Windows: useOpenGL=False)
-    pg.setConfigOptions(useOpenGL=True,antialias=True, foreground="k", background="w")
-    fenetre = EnregistreurHydrophoneWienerDualLive()
+    pg.setConfigOptions(useOpenGL=True, antialias=True, foreground="k", background="w")
+    fenetre = EnregistreurHydrophoneWienerDualFile()
     fenetre.showMaximized()
     sys.exit(app.exec_())
