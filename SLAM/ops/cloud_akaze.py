@@ -11,10 +11,9 @@ import matplotlib.pyplot as plt
 
 
 
-def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001, lowe : int = 0.8) :
+def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001, lowe : float = 0.8) :
 
     img_l_brute = cv.imread(PATH_IMG_L)
-    
     img_r_brute = cv.imread(PATH_IMG_R)
     
     h, w = img_l_brute.shape[:2]
@@ -22,7 +21,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     print(IMAGE_SIZE)
 
-    with open('/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
         params = pickle.load(f)
 
     # Preprocessing
@@ -35,16 +34,18 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     img_l_rect = cv.remap(img_l_brute, mapl_x, mapl_y, cv.INTER_LINEAR)
     img_r_rect = cv.remap(img_r_brute, mapr_x, mapr_y, cv.INTER_LINEAR)
 
-    img_l_clean= preprocess.cl_correction(img_l_rect)
-    img_r_clean = preprocess.cl_correction(img_r_rect)
+    img_l_clean = cv.cvtColor(img_l_rect, cv.COLOR_BGR2GRAY)
+    img_r_clean = cv.cvtColor(img_r_rect, cv.COLOR_BGR2GRAY)
+
+    #img_l_clean= preprocess.cl_correction(img_l_rect)
+    #img_r_clean = preprocess.cl_correction(img_r_rect)
 
     # Feature detection
 
-    orb = cv.ORB_create(nfeatures=50000)
-    kpts_l = orb.detect(img_l_clean,None)   
-    kpts_l, desc_l = orb.compute(img_l_clean,kpts_l)
-    kpts_r = orb.detect(img_r_clean,None)
-    kpts_r, desc_r = orb.compute(img_r_clean, kpts_r)
+    akaze = cv.AKAZE_create(threshold=akaze_t, diffusivity=cv.KAZE_DIFF_CHARBONNIER)
+    kpts_l, desc_l = akaze.detectAndCompute(img_l_clean, None)
+    kpts_r, desc_r = akaze.detectAndCompute(img_r_clean, None)
+
 
     start_time = time.time()
     
@@ -146,23 +147,28 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     pts_d = []
     index_g_clean = []
 
+    # Filtrage selon la condition Y
+    '''
     if len(pts_g_brut) > 10:
+        good_mask = (np.abs(pts_g_brut[:, 1] - pts_d_brut[:, 1]) < 5.0) & \
+                    (pts_g_brut[:, 0] - pts_d_brut[:, 0] > 0)  # disparité positive
+    '''
+    pts_g = pts_g_brut
+    pts_d = pts_d_brut
 
-        F, mask = cv.findFundamentalMat(pts_g_brut, pts_d_brut, cv.FM_RANSAC, 8.0, 0.99)
-        if mask is not None:
-            mask = mask.ravel()
-            for i in range(len(pts_g_brut)):
-                if mask[i] == 1: # Validation RANSAC
-                    index_g_clean.append(index_g_brut[i])
-                    pts_g.append(pts_g_brut[i])
-                    pts_d.append(pts_d_brut[i])
-                    inliers_g.append(kpts_g_brut[i])
-                    inliers_d.append(kpts_d_brut[i])
-                    
-            pts_g = np.float32(pts_g)
-            pts_d = np.float32(pts_d)
+    # Reconstruire index_g_clean et les keypoints pour visualisation
+    index_g_brut_arr = np.array(index_g_brut)
+    index_g_clean = index_g_brut_arr
+
+    kpts_g_brut_arr = np.array(kpts_g_brut, dtype=object)
+    kpts_d_brut_arr = np.array(kpts_d_brut, dtype=object)
+    inliers_g = kpts_g_brut_arr
+    inliers_d = kpts_d_brut_arr
+
+    pts_g = np.float32(pts_g)
+    pts_d = np.float32(pts_d)
     
-    print('--- Résultats ORB ---')
+    print('--- Résultats AKAZE ---')
     print(f'# Keypoints Gauche:   \t {len(kpts_l)}')
     print(f'# Keypoints Droite:   \t {len(kpts_r)}')
     print(f'# Matchs valides :\t {len(pts_g)}')
@@ -177,7 +183,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     
     # Visualisation
-   
+    '''
     vis_g = cv.cvtColor(img_l_clean, cv.COLOR_BGR2RGB)
     vis_d = cv.cvtColor(img_r_clean, cv.COLOR_BGR2RGB)
 
@@ -186,49 +192,46 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     combined = cv.hconcat([vis_g, vis_d])
 
-    """  plt.figure(figsize=(16, 8))
-    plt.title(f"Points utilisés pour la 3D ({len(pts_g)} Inliers)")
+    plt.figure(figsize=(16, 8))
+    plt.title(f"Points utilisés pour la 3D ({len(pts_g)} Inliers) sur {PATH_IMG_L} avec {akaze_t}")
     plt.imshow(combined)
     plt.axis('off')
     plt.tight_layout()
-    plt.show() 
+    plt.show()
 
 
     fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d') """
+    ax = fig.add_subplot(111, projection='3d')
+    '''
     
 
     # On filtre les points aberrants trop loin (ex: > 15 mètres)
 
-    mask = (points3D[:, 2] > 0.05) & (points3D[:, 2] < 15)
+    mask = (points3D[:, 2] > 0.05) & (points3D[:, 2] < 5.0)  # réduit à 5m (problème #2)
     p3d = points3D[mask]
-    index_g_clean = np.array(index_g_clean)
-    index_g_clean = index_g_clean[mask]
+    index_g_clean = np.array(index_g_clean)[mask]
     pts_g_clean = pts_g[mask]
     desc_l_clean = desc_l[index_g_clean]
 
-    
-    """ ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
+    '''
+    ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
     ax.set_xlabel('X (Largeur)')
     ax.set_ylabel('Z (Profondeur)')
     ax.set_zlabel('Y (Hauteur)')
     plt.title("Aperçu rapide du nuage de points")
-    plt.show() """
-   
+    plt.show()
+    '''
     
 
     return p3d, pts_g_clean, desc_l_clean 
 # La fonction renvoie le nuage 3d, la position X,Y sur l'image gauche des points matchés et leurs decripteurs
 
-
-
 if __name__ == '__main__' :
     parser = argparse.ArgumentParser(description='Pipeline Stéréo 3D avec AKAZE.')
-    parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/set_3_caillou/frame_0001_l.jpg')
-    parser.add_argument('--droite', help='Chemin image droite', default='SLAM/images_test/set_3_caillou/frame_0001_r.jpg')
-    parser.add_argument("--akaze", type=float, default=0.00001, help="Seuil de détection AKAZE")
-    parser.add_argument('--lowe', type=float, default=0.9, help='Ratio de Lowe')
+    parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/set_3_caillou/frame_0002_l.jpg')
+    parser.add_argument('--droite', help='Chemin image droite', default='SLAM/images_test/set_3_caillou/frame_0002_r.jpg')
+    parser.add_argument("--akaze", type=float, default=0.001, help="Seuil de détection AKAZE")
+    parser.add_argument('--lowe', type=float, default=0.8, help='Ratio de Lowe')
     parser.add_argument('--ytol', type=float, default=10.0, help='Tolérance horizontale (pixels)')
     args = parser.parse_args()
     generate_cloud(args.gauche, args.droite)
-
