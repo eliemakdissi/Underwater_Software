@@ -38,8 +38,6 @@ def correlation(first_sample, second_sample):
 def calculate_angle(delay_samples, sample_rate, distance_microphones, celerity):
     """Calculate the angle between hydrophone baseline normal and beacon."""
     delta_t = delay_samples / sample_rate
-    print(f"Delay measured between the two signals: {delta_t}")
-    print(f"Number of samples between the two signals: {delay_samples}")
     ratio = (celerity * delta_t) / distance_microphones
     ratio = np.clip(ratio, -1.0, 1.0)
     angle = np.arcsin(ratio) * 180 / np.pi
