@@ -11,10 +11,9 @@ import matplotlib.pyplot as plt
 
 
 
-def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001, lowe : int = 0.8) :
+def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001, lowe : int = 0.9) :
 
     img_l_brute = cv.imread(PATH_IMG_L)
-    
     img_r_brute = cv.imread(PATH_IMG_R)
     
     h, w = img_l_brute.shape[:2]
@@ -35,12 +34,16 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     img_l_rect = cv.remap(img_l_brute, mapl_x, mapl_y, cv.INTER_LINEAR)
     img_r_rect = cv.remap(img_r_brute, mapr_x, mapr_y, cv.INTER_LINEAR)
 
-    img_l_clean= preprocess.cl_correction(img_l_rect)
-    img_r_clean = preprocess.cl_correction(img_r_rect)
+    img_l_clean= preprocess.cl_vert(img_l_rect)
+    img_r_clean = preprocess.cl_vert(img_r_rect)
+
+    clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    img_l_clean = clahe.apply(img_l_clean)
+    img_r_clean = clahe.apply(img_r_clean)
 
     # Feature detection
 
-    orb = cv.ORB_create(nfeatures=20000)
+    orb = cv.ORB_create(nfeatures=10000)
     kpts_l = orb.detect(img_l_clean,None)   
     kpts_l, desc_l = orb.compute(img_l_clean,kpts_l)
     kpts_r = orb.detect(img_r_clean,None)
@@ -147,20 +150,23 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     index_g_clean = []
 
     if len(pts_g_brut) > 10:
+        good_mask = (np.abs(pts_g_brut[:, 1] - pts_d_brut[:, 1]) < 3.0) & \
+                    (pts_g_brut[:, 0] - pts_d_brut[:, 0] > 0)  # disparité positive
 
-        F, mask = cv.findFundamentalMat(pts_g_brut, pts_d_brut, cv.FM_RANSAC, 8.0, 0.99)
-        if mask is not None:
-            mask = mask.ravel()
-            for i in range(len(pts_g_brut)):
-                if mask[i] == 1: # Validation RANSAC
-                    index_g_clean.append(index_g_brut[i])
-                    pts_g.append(pts_g_brut[i])
-                    pts_d.append(pts_d_brut[i])
-                    inliers_g.append(kpts_g_brut[i])
-                    inliers_d.append(kpts_d_brut[i])
-                    
-            pts_g = np.float32(pts_g)
-            pts_d = np.float32(pts_d)
+        pts_g = pts_g_brut[good_mask]
+        pts_d = pts_d_brut[good_mask]
+
+        # Reconstruire index_g_clean et les keypoints pour visualisation
+        index_g_brut_arr = np.array(index_g_brut)
+        index_g_clean = index_g_brut_arr[good_mask].tolist()
+
+        kpts_g_brut_arr = np.array(kpts_g_brut, dtype=object)
+        kpts_d_brut_arr = np.array(kpts_d_brut, dtype=object)
+        inliers_g = kpts_g_brut_arr[good_mask].tolist()
+        inliers_d = kpts_d_brut_arr[good_mask].tolist()
+
+        pts_g = np.float32(pts_g)
+        pts_d = np.float32(pts_d)
     
     print('--- Résultats ORB ---')
     print(f'# Keypoints Gauche:   \t {len(kpts_l)}')
@@ -177,7 +183,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     
     # Visualisation
-   
+    
     vis_g = cv.cvtColor(img_l_clean, cv.COLOR_BGR2RGB)
     vis_d = cv.cvtColor(img_r_clean, cv.COLOR_BGR2RGB)
 
@@ -185,7 +191,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     cv.drawKeypoints(vis_d, inliers_d, vis_d, color=(0, 255, 0), flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
     combined = cv.hconcat([vis_g, vis_d])
-
+    '''
     plt.figure(figsize=(16, 8))
     plt.title(f"Points utilisés pour la 3D ({len(pts_g)} Inliers)")
     plt.imshow(combined)
@@ -196,24 +202,24 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
-    
+    '''
 
     # On filtre les points aberrants trop loin (ex: > 15 mètres)
 
-    mask = (points3D[:, 2] > 0.05) & (points3D[:, 2] < 15)
+    mask = (points3D[:, 2] > 0.05) & (points3D[:, 2] < 5.0)  # réduit à 5m (problème #2)
     p3d = points3D[mask]
-    index_g_clean = np.array(index_g_clean)
-    index_g_clean = index_g_clean[mask]
+    index_g_clean = np.array(index_g_clean)[mask]
     pts_g_clean = pts_g[mask]
     desc_l_clean = desc_l[index_g_clean]
 
-    
+    '''
     ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
     ax.set_xlabel('X (Largeur)')
     ax.set_ylabel('Z (Profondeur)')
     ax.set_zlabel('Y (Hauteur)')
     plt.title("Aperçu rapide du nuage de points")
     plt.show()
+    '''
     
     
 
@@ -227,7 +233,7 @@ if __name__ == '__main__' :
     parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/set_3_caillou/frame_0001_l.jpg')
     parser.add_argument('--droite', help='Chemin image droite', default='SLAM/images_test/set_3_caillou/frame_0001_r.jpg')
     parser.add_argument("--akaze", type=float, default=0.00001, help="Seuil de détection AKAZE")
-    parser.add_argument('--lowe', type=float, default=0.9, help='Ratio de Lowe')
+    parser.add_argument('--lowe', type=float, default=0.8, help='Ratio de Lowe')
     parser.add_argument('--ytol', type=float, default=10.0, help='Tolérance horizontale (pixels)')
     args = parser.parse_args()
     generate_cloud(args.gauche, args.droite)
