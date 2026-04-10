@@ -2,8 +2,10 @@ import cv2
 import numpy as np
  
 #image_path = "C:/Users/ssabb/Downloads/IMG_5477.mp4"  # Change to your input video
+'''
 frame_path = "SLAM/image6.jpg"
 frame = cv2.imread(frame_path)
+'''
 
 def cl_vert(image):
     return image[:,:,1]
