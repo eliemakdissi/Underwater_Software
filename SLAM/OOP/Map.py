@@ -1,5 +1,6 @@
 # Implementation of the Map class
 import threading
+import numpy as np
 
 class Map:
     
@@ -20,7 +21,7 @@ class Map:
         with self.data_mutex_:
             self.current_frame_ = frame
             self.keyframes_[frame.id_] = frame
-            self.active_keyframes_ = frame
+            self.active_keyframes_[frame.id_] = frame
 
         if len(self.active_keyframes_) > self.num_active_keyframes_:
             self.remove_old_keyframe()
@@ -52,7 +53,22 @@ class Map:
         
 
     def clean_map(self):
-        pass
+        
+        with self.data_mutex_:
+            ids_to_remove = []
+
+            for mp_id, map_point in self.landmarks_.items() : 
+                if map_point.is_outlier_ or map_point.observed_times_ == 0:
+                    ids_to_remove.append(mp_id)
+
+            for mp_id in ids_to_remove:
+                self.landmarks_.pop(mp_id, None)
+                self.active_landmarks_.pop(mp_id, None)
+
 
     def remove_old_keyframe(self):
-        pass
+
+        if len(self.active_keyframes_) <= self.num_active_keyframes_:
+            return
+        min_id = min(self.active_keyframes_.keys())
+        self.active_keyframes_.pop(min_id, None)

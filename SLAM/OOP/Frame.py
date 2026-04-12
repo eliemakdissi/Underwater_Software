@@ -3,6 +3,7 @@
 import cv2 as cv
 import numpy as np
 import threading
+from Feature import Feature
 
 class Frame:
 
@@ -10,6 +11,7 @@ class Frame:
 
     def __init__(self, id=None, time_stamp=0.0, pose=None, left_img=None, right_img=None):
         # Data members
+        # A checker si on envoit que les paths ou directement les cv.imread
         self.id_ = id if id is not None else Frame._next_id
         self.keyframe_id_ = 0
         self.is_keyframe_ = False
@@ -21,9 +23,15 @@ class Frame:
         # Thread safety
         self._pose_mutex = threading.Lock()
         
-        # Images (OpenCV Mat en C++ devient numpy.ndarray en Python)
+        # Images 
         self.left_img_ = left_img
         self.right_img_ = right_img
+
+        # Preprocessing
+        self.clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+
+        # Feature extraction
+        self.sift = cv.SIFT_create(contrastThreshold=0.03, edgeThreshold=10, nOctaveLayers=4)
 
         # Features lists
         self.features_left_ = []
@@ -46,7 +54,49 @@ class Frame:
         self.keyframe_id_ = self.id_ 
 
     @staticmethod
-    def create_frame():
-        new_frame = Frame(id=Frame._next_id)
+    def create_frame(time_stamp : float, left_img, right_img):
+        new_frame = Frame(id=Frame._next_id, time_stamp=time_stamp, left_img=left_img, right_img=right_img)
         Frame._next_id += 1
         return new_frame
+    
+    def preprocess(self):
+        self.clean_left_img_ = self.clahe.apply(self.left_img_[:,:,1])
+        self.clean_right_img_ = self.clahe.apply(self.right_img_[:,:,1])
+        return True
+    
+    def extract_features(self):
+        key_l, desc_l = self.sift.DetectAndCompute(self.clean_left_img_)
+        key_r, desc_r = self.sift.DetectAndCompute(self.clean_right_img_)
+
+        for i in range(len(key_l)):
+            new_feature = Feature(frame=self, keypoint=key_l[i], descriptor=desc_l[i])
+            new_feature.is_on_left_image_= True
+            self.features_left_.append(new_feature)
+        for i in range(len(key_r)):
+            new_feature = Feature(frame=self, keypoint=key_r[i], descriptor= desc_r[i])
+            new_feature.is_on_left_image_= False
+            self.features_right_.append(new_feature)
+        return True
+
+    def compute_bins_r(self):
+
+        self.bins_r = {}
+        self.BIN_SIZE = 30
+
+        for i, feature in enumerate(self.features_right_) :
+            bin_nb = int(feature.position_.pt[1]/self.BIN_SIZE)
+
+            if bin_nb not in self.bins_r:
+                self.bins_r[bin_nb] = [i]
+            else:
+                self.bins_r[bin_nb].append(i)
+
+        return True
+        
+
+
+
+
+            
+        
+

@@ -43,8 +43,8 @@ class MapPoint:
             return self.observations_
 
     @staticmethod
-    def create_new_mappoint():
+    def create_new_mappoint(self, position):
         """ Factory method pour créer un nouveau point 3D """
-        new_point = MapPoint(id=MapPoint._next_id)
+        new_point = MapPoint(id=MapPoint._next_id, position=position)
         MapPoint._next_id += 1
         return new_point
