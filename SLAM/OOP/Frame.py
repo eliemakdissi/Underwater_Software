@@ -20,7 +20,8 @@ class Frame:
 
     # Feature detection
 
-    sift = cv.SIFT_create(contrastThreshold=0.03, edgeThreshold=10, nOctaveLayers=4)
+    sift = cv.SIFT_create(contrastThreshold=0.02, edgeThreshold=10, nOctaveLayers=4)
+    orb = cv.ORB_create(nfeatures=10000, scaleFactor=1.2, nlevels=8)
 
 
     _next_id = 0
@@ -80,8 +81,8 @@ class Frame:
         return True
     
     def extract_features(self):
-        key_l, desc_l = Frame.sift.detectAndCompute(self.clean_left_img_, None)
-        key_r, desc_r = Frame.sift.detectAndCompute(self.clean_right_img_, None)
+        key_l, desc_l = Frame.orb.detectAndCompute(self.clean_left_img_, None)
+        key_r, desc_r = Frame.orb.detectAndCompute(self.clean_right_img_, None)
 
         for i in range(len(key_l)):
             new_feature = Feature(frame=self, keypoint=key_l[i], descriptor=desc_l[i])
@@ -93,10 +94,19 @@ class Frame:
             self.features_right_.append(new_feature)
         return True
 
-    def compute_bins_r(self):
+    def compute_bins(self):
 
+        self.bins_l = {}
         self.bins_r = {}
-        self.BIN_SIZE = 60
+        self.BIN_SIZE = 50
+
+        for i, feature in enumerate(self.features_left_) :
+            bin_nb = int(feature.position_.pt[1]/self.BIN_SIZE)
+
+            if bin_nb not in self.bins_l:
+                self.bins_l[bin_nb] = [i]
+            else:
+                self.bins_l[bin_nb].append(i)
 
         for i, feature in enumerate(self.features_right_) :
             bin_nb = int(feature.position_.pt[1]/self.BIN_SIZE)

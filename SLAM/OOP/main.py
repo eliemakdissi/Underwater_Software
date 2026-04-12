@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import os
 from Frame import Frame
 from Map import Map
 from Frontend import Frontend
@@ -11,25 +12,30 @@ def main():
     
     # 1. Initialisation de l'architecture
     slam_map = Map()
+    # Assure-toi que Frame.params contient bien tes paramètres de calibration stéréo
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map)
 
     # Variables pour le visuel final
     trajectoire_camera = []
 
     # 2. Boucle Principale
-    for i in range(2, 13):
+    # Ajuste le range() selon le nombre d'images de ton dataset
+    start_frame = 2
+    end_frame = 20 
+    
+    for i in range(start_frame, end_frame):
         t_start = time.time()
         
-        # Chemins de tes images
+        # Ajuste les chemins vers tes images de test
         path_l = f'SLAM/images_test/set_3_caillou/frame_{i:04d}_l.jpg'
         path_r = f'SLAM/images_test/set_3_caillou/frame_{i:04d}_r.jpg'
         
+        if not os.path.exists(path_l) or not os.path.exists(path_r):
+             print(f"⚠️ Image {i} introuvable, passage à la suivante.")
+             continue
+        
         img_l = cv.imread(path_l, cv.IMREAD_COLOR) 
         img_r = cv.imread(path_r, cv.IMREAD_COLOR)
-        
-        if img_l is None or img_r is None:
-            print(f"Image {i} introuvable.")
-            continue
 
         # Création et envoi au Frontend
         current_frame = Frame.create_frame(time_stamp=float(i), left_img=img_l, right_img=img_r)
@@ -39,11 +45,12 @@ def main():
         # DEBUG VISUEL : Temps Réel (OpenCV)
         # ==========================================
         if success:
-            # On stocke la position de la caméra pour le graphe 3D (Extraction de la translation)
-            pose_inv = np.linalg.inv(current_frame.pose)
+            # Extraction de la position globale de la caméra
+            # T_wc (World -> Camera) = inv(pose). La translation est dans [:3, 3]
+            pose_inv = np.linalg.inv(current_frame.pose_)
             trajectoire_camera.append(pose_inv[:3, 3])
 
-            # Dessin de l'image gauche avec les inliers en vert
+            # Dessin de l'image gauche avec les inliers
             vis_img = cv.cvtColor(current_frame.clean_left_img_, cv.COLOR_GRAY2BGR)
             inliers_count = 0
             
@@ -54,15 +61,16 @@ def main():
                     cv.circle(vis_img, (x, y), 3, (0, 255, 0), -1)
                     inliers_count += 1
             
-            # Affichage texte sur la vidéo
-            cv.putText(vis_img, f"Frame: {i} | Inliers: {inliers_count}", (20, 40), 
-                       cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # Affichage du statut sur l'image
+            status_text = f"Frame: {i} | Inliers: {inliers_count} | KFs: {len(slam_map.get_all_keyframes())}"
+            cv.putText(vis_img, status_text, (20, 40), 
+                       cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             
             cv.imshow("SLAM Tracking", vis_img)
-            cv.waitKey(1) # Laisse l'image affichée 1ms avant de passer à la suivante
+            cv.waitKey(1) # Laisse l'image affichée 1ms
             
         else:
-            print(f"Échec du tracking sur la frame {i}")
+            print(f"❌ Échec du tracking sur la frame {i}")
 
         print(f"Frame {i} traitée en {(time.time() - t_start)*1000:.1f} ms")
 
@@ -82,25 +90,32 @@ def main():
     xyz_global = np.array([mp.pos_ for mp in tous_les_points])
     trajectoire = np.array(trajectoire_camera)
 
-    fig = plt.figure(figsize=(10, 8))
+    fig = plt.figure(figsize=(12, 8))
     ax = fig.add_subplot(111, projection='3d')
 
-    # Filtre les points aberrants
-    mask = (xyz_global[:, 2] > 0.05) & (xyz_global[:, 2] < 15.0)
+    # Filtre les points aberrants pour l'affichage (ex: Z > 20m ou Z < 0)
+    mask = (xyz_global[:, 2] > 0.05) & (xyz_global[:, 2] < 20.0)
     p3d = xyz_global[mask]
 
     # Nuage de points (Rouge)
-    ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=2, c='r', label="MapPoints")
+    ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r', alpha=0.5, label="MapPoints")
     
     # Trajectoire de la caméra (Bleu)
     if len(trajectoire) > 0:
         ax.plot(trajectoire[:, 0], trajectoire[:, 2], -trajectoire[:, 1], 
-                c='b', linewidth=2, marker='o', label="Trajectoire Caméra")
+                c='b', linewidth=2, marker='o', markersize=4, label="Trajectoire Caméra")
+        
+        # Marquer le point de départ en vert
+        ax.scatter(trajectoire[0, 0], trajectoire[0, 2], -trajectoire[0, 1], c='g', s=50, label="Départ", zorder=5)
 
-    ax.set_xlabel('X (Largeur)')
+    ax.set_xlabel('X (Droite/Gauche)')
     ax.set_ylabel('Z (Profondeur)')
-    ax.set_zlabel('Y (Hauteur)')
-    plt.title(f"Carte 3D du SLAM ({len(p3d)} points)")
+    ax.set_zlabel('Y (Haut/Bas)')
+    
+    # Ajuster le ratio des axes pour une vue plus réaliste
+    ax.set_box_aspect([1, 1, 1]) 
+    
+    plt.title(f"Carte 3D du SLAM ({len(p3d)} points, {len(slam_map.get_all_keyframes())} Keyframes)")
     plt.legend()
     plt.show()
 
