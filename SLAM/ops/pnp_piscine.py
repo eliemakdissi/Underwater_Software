@@ -36,23 +36,23 @@ for i in range (2409,2420) :
     print(CURRENT_PATH_IMG_L)
     current3d, current2d, current_desc = generate_cloud(PATH_IMG_L=CURRENT_PATH_IMG_L, PATH_IMG_R=CURRENT_PATH_IMG_R)
 
-    # Matching
+    # 1. Matching
     knn_matches = matcher.knnMatch(previous_desc, current_desc, k=2)
 
-    # Filtrage de Lowe 
+    # 2. Filtrage de Lowe 
     mask1 = []
     mask2 = []
     
     for match in knn_matches:
-        if len(match)==2:
-            m,n = match
+        if len(match) == 2:
+            m, n = match
             if m.distance < n.distance * lowe:
                 mask1.append(m.queryIdx)
                 mask2.append(m.trainIdx)
 
-    
-    pts_3D_pnp = previous3d[mask1]
-    pts_2D_pnp = current2d[mask2]
+    # 3. Extraction EXACTE des points qui ont matché
+    pts_3D_pnp = np.array(previous3d[mask1], dtype=np.float32)
+    pts_2D_pnp = np.array(current2d[mask2], dtype=np.float32)
 
     succes, rvec, tvec, inliers = cv.solvePnPRansac(objectPoints=pts_3D_pnp, imagePoints=pts_2D_pnp, cameraMatrix=K_rect, distCoeffs=dist_zero, flags=cv.SOLVEPNP_ITERATIVE)
 
@@ -88,6 +88,7 @@ for i in range (2409,2420) :
         pcd_down = pcd.voxel_down_sample(voxel_size=0.05)  # 5cm de résolution
         nuage_global.append(np.asarray(pcd_down.points))
 
+        # On met à jour les "previous" uniquement si PnP a réussi !
         previous3d = current3d 
         previous2d = current2d
         previous_desc = current_desc

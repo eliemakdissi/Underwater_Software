@@ -21,7 +21,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
 
     print(IMAGE_SIZE)
 
-    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+    with open('/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
         params = pickle.load(f)
 
     # Preprocessing
@@ -197,7 +197,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.00001
     plt.imshow(combined)
     plt.axis('off')
     plt.tight_layout()
-    plt.show()
+    plt.show() 
 
 
     fig = plt.figure(figsize=(10, 8))
