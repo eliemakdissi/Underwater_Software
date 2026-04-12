@@ -33,23 +33,20 @@ class Map:
             self.active_landmarks_[map_point.id_] = map_point
 
     def get_all_map_points(self):
-
         with self.data_mutex_:
-            return self.landmarks_.copy()
+            return list(self.landmarks_.values())
         
     def get_all_keyframes(self):
-
         with self.data_mutex_:
-            return self.keyframes_.copy()
+            return list(self.keyframes_.values())
         
     def get_active_map_points(self):
-
         with self.data_mutex_:
-            return self.active_landmarks_.copy()
+            return list(self.active_landmarks_.values())
         
     def get_active_keyframes(self):
         with self.data_mutex_:
-            return self.active_keyframes_.copy()
+            return list(self.active_keyframes_.values())
         
 
     def clean_map(self):

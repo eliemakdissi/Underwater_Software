@@ -3,9 +3,25 @@
 import cv2 as cv
 import numpy as np
 import threading
+import pickle
 from Feature import Feature
 
 class Frame:
+
+    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+        params = pickle.load(f)
+
+    # Preprocessing
+    
+    mapl_x, mapl_y = cv.initUndistortRectifyMap(params['mtx1'], params['dist1'], params['R1'], params['P1'], (1920,1080), cv.CV_32FC1)
+    mapr_x, mapr_y = cv.initUndistortRectifyMap(params['mtx2'], params['dist2'], params['R2'], params['P2'], (1920,1080), cv.CV_32FC1)
+
+    clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+
+    # Feature detection
+
+    sift = cv.SIFT_create(contrastThreshold=0.03, edgeThreshold=10, nOctaveLayers=4)
+
 
     _next_id = 0
 
@@ -26,12 +42,6 @@ class Frame:
         # Images 
         self.left_img_ = left_img
         self.right_img_ = right_img
-
-        # Preprocessing
-        self.clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-
-        # Feature extraction
-        self.sift = cv.SIFT_create(contrastThreshold=0.03, edgeThreshold=10, nOctaveLayers=4)
 
         # Features lists
         self.features_left_ = []
@@ -59,14 +69,19 @@ class Frame:
         Frame._next_id += 1
         return new_frame
     
-    def preprocess(self):
-        self.clean_left_img_ = self.clahe.apply(self.left_img_[:,:,1])
-        self.clean_right_img_ = self.clahe.apply(self.right_img_[:,:,1])
+    def preprocess(self): 
+
+        img_l_rect = cv.remap(self.left_img_, Frame.mapl_x, Frame.mapl_y, cv.INTER_LINEAR)
+        img_r_rect = cv.remap(self.right_img_, Frame.mapr_x, Frame.mapr_y, cv.INTER_LINEAR)
+
+        self.clean_left_img_ = Frame.clahe.apply(img_l_rect[:,:,1])
+        self.clean_right_img_ = Frame.clahe.apply(img_r_rect[:,:,1])
+
         return True
     
     def extract_features(self):
-        key_l, desc_l = self.sift.DetectAndCompute(self.clean_left_img_)
-        key_r, desc_r = self.sift.DetectAndCompute(self.clean_right_img_)
+        key_l, desc_l = Frame.sift.detectAndCompute(self.clean_left_img_, None)
+        key_r, desc_r = Frame.sift.detectAndCompute(self.clean_right_img_, None)
 
         for i in range(len(key_l)):
             new_feature = Feature(frame=self, keypoint=key_l[i], descriptor=desc_l[i])
@@ -81,7 +96,7 @@ class Frame:
     def compute_bins_r(self):
 
         self.bins_r = {}
-        self.BIN_SIZE = 30
+        self.BIN_SIZE = 60
 
         for i, feature in enumerate(self.features_right_) :
             bin_nb = int(feature.position_.pt[1]/self.BIN_SIZE)
