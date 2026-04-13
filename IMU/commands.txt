@@ -31,3 +31,11 @@ git add ardupilot-master
 git commit -m "Submodule: Point to latest Orientus driver commit"
 git push origin main
 -------------------------------------------------------------------------------------------------------------------------------------------------
+9) ssh pi@192.168.2.2 => password: raspberry => sudo su => cd /root/.config/blueos/ardupilot-manager/firmware/
+then: reading the file => cat elie_debug.txt
+      live monitoring => tail -f elie_debug.txt
+
+debug: Sub::write_debug("Hello World!");
+-------------------------------------------------------------------------------------------------------------------------------------------------
+10) export project structure (cd inside where you want to have the structure): tree -I 'node_modules|.git' -L 3 > structure.txt
+11) export to ai-friendly format: npx repomix --ignore "**/.git/**,**/node_modules/**,**/dist/**,**/build/**,**/*.log,**/*.bin,**/*.tmp,**/.env"

@@ -3,18 +3,21 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**",
-                "${workspaceFolder}/ardupilot-master/libraries/**",
-                "${workspaceFolder}/ardupilot-master/modules/mavlink/**"
+                "${workspaceFolder}/**"
             ],
             "defines": [],
             "cStandard": "c17",
             "cppStandard": "gnu++17",
             "intelliSenseMode": "linux-gcc-x64",
             "compilerPath": "/usr/bin/g++",
-            "compileCommands": [
-                "${workspaceFolder}/ardupilot-master/build/navigator/compile_commands.json"
-            ]
+            "compileCommands": "${workspaceFolder}/ardupilot-master/build/navigator/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/ardupilot-master/libraries",
+                    "${workspaceFolder}/ardupilot-master/modules/mavlink"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
         }
     ],
     "version": 4
