@@ -55,7 +55,7 @@ class Map:
             ids_to_remove = []
 
             for mp_id, map_point in self.landmarks_.items() : 
-                if map_point.is_outlier_ or map_point.observed_times_ == 0:
+                if map_point.is_outlier_ or map_point.observed_times_ <= 0:
                     ids_to_remove.append(mp_id)
 
             for mp_id in ids_to_remove:

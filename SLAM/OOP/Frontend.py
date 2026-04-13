@@ -5,6 +5,7 @@ import numpy as np
 from Frame import Frame
 from Map import Map
 from MapPoint import MapPoint
+from Backend import Backend
 
 class FrontendStatus():
     INITING = 0
@@ -14,7 +15,7 @@ class FrontendStatus():
 
 class Frontend():
 
-    def __init__(self, params_stereo_, map : Map):
+    def __init__(self, params_stereo_, map : Map, backend : Backend):
 
         self.status_ = FrontendStatus.INITING
         self.params_stero_ = params_stereo_
@@ -26,7 +27,9 @@ class Frontend():
 
         self.map_ = map
 
-        self.matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=False)
+        self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
+
+        self.backend_ = backend
 
     def add_frame(self, frame: Frame):
         self.current_frame_ = frame
@@ -73,14 +76,19 @@ class Frontend():
             knnMatches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
             # Test de Lowe
-            LOWE =  0.75
-            for match in knnMatches:
-                if len(match)==2:
-                    m, n = match
-                    if m.distance <= n.distance * LOWE : 
+            LOWE = 0.75
+            MAX_EPIPOLAR = 2
 
-                        idx_l_bruts.append(idx_l_research[m.queryIdx])
-                        idx_r_bruts.append(idx_r_research[m.trainIdx])
+            for match in knnMatches:
+                if len(match) == 2:
+                    m, n = match
+                    if m.distance <= n.distance * LOWE:
+                        idx_l = idx_l_research[m.queryIdx]
+                        idx_r = idx_r_research[m.trainIdx]
+
+                        if np.abs(features_l[idx_l].position_.pt[1]-features_r[idx_r].position_.pt[1]) <= MAX_EPIPOLAR:
+                            idx_l_bruts.append(idx_l)
+                            idx_r_bruts.append(idx_r)
 
 
         # Matching avec bins mais un indice à la fois
@@ -210,7 +218,7 @@ class Frontend():
                 pts3d_arr, pts2d_arr, K, None, 
                 flags=cv.SOLVEPNP_ITERATIVE,
                 iterationsCount=100,
-                reprojectionError=10.0 # Tolérance de 3 pixels
+                reprojectionError=10.0
             )
             
             if success and inliers is not None and len(inliers) >= 10:
@@ -265,13 +273,13 @@ class Frontend():
         ratio_survie = num_inliers / max(1, num_previous_pts)
 
         if ratio_survie < 0.6 or num_inliers < 50: 
-            print(f"[KF] Création : ratio de survie faible ({ratio_survie*100:.1f}%)")
+            print(f"new keyfram : ratio de survie ({ratio_survie*100:.1f}%)")
             return True
         
         if self.num_frames_since_last_kf_ > 15 :
             return True
         
-        last_kf = list(self.map_.get_active_keyframes().values())[-1] 
+        last_kf = self.map_.get_active_keyframes()[-1] 
         
         translation = np.linalg.norm(
             self.current_frame_.pose_[:3, 3] - last_kf.pose_[:3, 3]
@@ -296,7 +304,13 @@ class Frontend():
 
         self.create_new_landmarks()
 
-        # Backend ici pour démarrer l'optim
+        if self.backend_ is not None:
+
+            optim_thread = threading.Thread(target=self.backend_.update_map)
+            optim_thread.daemon = True # Le thread s'arrêtera si on ferme le programme
+            optim_thread.start()
+
+  
 
     def create_new_landmarks(self):
 
@@ -338,12 +352,17 @@ class Frontend():
             knnMatches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
             LOWE = 0.75
+            MAX_EPIPOLAR = 2
             for match in knnMatches:
                 if len(match) == 2:
                     m, n = match
                     if m.distance <= n.distance * LOWE:
-                        idx_l_bruts.append(idx_l_research[m.queryIdx])
-                        idx_r_bruts.append(idx_r_research[m.trainIdx])
+                        idx_l = idx_l_research[m.queryIdx]
+                        idx_r = idx_r_research[m.trainIdx]
+
+                        if np.abs(features_l[idx_l].position_.pt[1]-features_r[idx_r].position_.pt[1]) <= MAX_EPIPOLAR:
+                            idx_l_bruts.append(idx_l)
+                            idx_r_bruts.append(idx_r)
 
         pts_l = np.float32([features_l[i].position_.pt for i in idx_l_bruts])
         pts_r = np.float32([features_r[i].position_.pt for i in idx_r_bruts])
