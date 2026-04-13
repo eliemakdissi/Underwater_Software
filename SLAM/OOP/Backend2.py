@@ -1,120 +1,205 @@
-import threading
-from gtsam import Point3, Pose3
-import plotly.express as px
 import numpy as np
 import gtsam
-import math
-
+from gtsam import symbol_shorthand, Pose3, Rot3, Point3
 import matplotlib.pyplot as plt
-from gtsam.utils import plot
-from numpy.random import default_rng
-from gtsam import symbol_shorthand
-rng = default_rng()
 
-NM = gtsam.noiseModel
+L = symbol_shorthand.L
+X = symbol_shorthand.X
 
 
-class Backend():
+class Backend:
 
-    def __init__(self, params_stereo_):
-        # parameters
-        self.minPose = 1  # minimum number of keyframes to process initially
-        self.incK = 1  # minimum number of keyframes to process after
-        self.K = 0
-        robust = True
-        # Set Noise parameters
-        priorSigmas = gtsam.Point3(1, 1, math.pi)
-        odoSigmas = gtsam.Point3(0.05, 0.01, 0.1)
-        sigmaR = 100        # range standard deviation
+    def __init__(self, params_stereo, slam_map):
+        self.map_ = slam_map
 
-        self.priorNoise = NM.Diagonal.Sigmas(priorSigmas)  # prior
-        self.looseNoise = NM.Isotropic.Sigma(2, 1000)     # loose LM prior
-        self.odoNoise = NM.Diagonal.Sigmas(odoSigmas)     # odometry
-        self.gaussian = NM.Isotropic.Sigma(1, sigmaR)     # non-robust
-        self.stereo_noise = NM.Isotropic.Sigma(3, 1.0) # 1 pixel std dev (ul, ur, v)
+        # Calibration from the rectified projection matrix P1
+        # (features are detected on rectified images, so P1 is the correct intrinsic)
+        P1 = params_stereo['P1']
+        fx, fy = P1[0, 0], P1[1, 1]
+        s = P1[0, 1]
+        cx, cy = P1[0, 2], P1[1, 2]
+        self.calibration = gtsam.Cal3_S2(fx, fy, s, cx, cy)
 
+        # --- Noise models ---
+        # Prior on first pose (anchors the coordinate frame)
+        self.prior_noise = gtsam.noiseModel.Diagonal.Sigmas(
+            np.array([0.001, 0.001, 0.001, 0.001, 0.001, 0.001])  # rot, trans
+        )
+        # Odometry between consecutive keyframes
+        self.odometry_noise = gtsam.noiseModel.Diagonal.Sigmas(
+            np.array([0.05, 0.05, 0.05, 0.05, 0.01, 0.1])  # rot, trans
+        )
+        # Projection factor (pixel-space) with Huber robust kernel
+        pixel_noise = gtsam.noiseModel.Isotropic.Sigma(2, 2.0)
+        huber = gtsam.noiseModel.mEstimator.Huber.Create(1.345)
+        self.projection_noise = gtsam.noiseModel.Robust.Create(huber, pixel_noise)
+        # Very loose prior on landmarks (prevents indeterminate system for
+        # landmarks observed from a single keyframe only)
+        self.landmark_prior_noise = gtsam.noiseModel.Isotropic.Sigma(3, 100.0)
 
-        # Initialize iSAM
-        self.isam = gtsam.ISAM2()
+        # --- iSAM2 ---
+        isam_params = gtsam.ISAM2Params()
+        isam_params.setRelinearizeThreshold(0.1)
+        isam_params.setRelinearizeSkip(1)
+        self.isam = gtsam.ISAM2(isam_params)
 
-        self.odometry_to_add = [] #j, i, StereoPoint2
-        self.landmarks_to_add = {}
-        self.initializedLandmarks = set()
+        # --- Bookkeeping ---
+        self.processed_keyframe_ids = []
+        self.initialized_landmarks = set()
+        self.result = None
 
-        self.last_pose = Pose3(0, 0, 0, 0, 0, 0)
-        self.initialized = False
-        self.pose_counter = 0
-        self.newFactors = gtsam.NonlinearFactorGraph()
-        self.newFactors.addPriorPose3(0, self.lastpose, self.priorNoise)
-        self.initial = gtsam.Values()
-        self.initial.insert(0, self.last_pose)
-        print(self.newFactors, self.initial)
+        # --- Live plot ---
+        self.fig = None
+        self.ax = None
+        plt.ion()
 
-        print(self.isam)
-    def insert_keyframe(self,frame):
-        pass
+    # ------------------------------------------------------------------
+    # Pose convention helpers
+    # Frontend stores T_cw (world-to-camera). GTSAM Pose3 = T_wc (camera-in-world).
+    # ------------------------------------------------------------------
 
-    def optimization_step(self):
-        # Loop over odometry
-        for t, relative_pose in self.odometry_to_add.items():
-            # add odometry factor
-            self.newFactors.add(gtsam.BetweenFactorPose3(self.pose_counter - 1, self.pose_counter, relative_pose,
-                                                    self.odoNoise))
+    def _to_gtsam_pose(self, T_cw):
+        T_wc = np.linalg.inv(T_cw)
+        return Pose3(Rot3(T_wc[:3, :3]), Point3(T_wc[:3, 3]))
 
-            # predict pose and add as initial estimate
-            predictedPose = self.lastPose.compose(relative_pose)
-            self.lastPose = predictedPose
-            self.initial.insert(self.pose_counter, predictedPose)
-            self.K +=1
+    def _to_T_cw(self, gtsam_pose):
+        T_wc = gtsam_pose.matrix()
+        return np.linalg.inv(T_wc)
 
-            # Check if there are landmarks to be added
-        for landmark in self.landmarks_to_add:
-            if landmark[1] == self.pose_counter:
-                j,_,stereo_point = landmark
-                landmark_key = gtsam.symbol('L', j)
-                ###
-                self.newFactors.add(gtsam.GenericStereoFactor3D(stereo_point,self.stereo_noise,
-                    self.pose_counter, landmark_key, self.calibration))
-                if landmark_key not in self.initializedLandmarks:
-                    p = rng.normal(loc=0, scale=100, size=(3,)) #à modifier avec les guess du reste
-                    self.initial.insert(landmark_key, p)
-                    print(f"Adding landmark L{j}")
-                    self.initializedLandmarks.add(landmark_key)
-                    # We also add a very loose prior on the landmark in case there is only
-                    # one sighting, which cannot fully determine the landmark.
-                    self.newFactors.add(gtsam.PriorFactorPoint3(
-                        landmark_key, Point3(0,0, 0), self.looseNoise))
-                
-        # Check whether we've seen enough keyframes to update the graph
-        if (self.pose_counter > self.minPose) and (self.K > self.incK):
-            if not initialized:  # Do a full optimize for first minK ranges
-                print(f"Initializing at pose {self.pose_counter}")
-                batchOptimizer = gtsam.LevenbergMarquardtOptimizer(
-                    self.newFactors, self.initial)
-                initial = batchOptimizer.optimize()
-                initialized = True
-            self.isam.update(self.newFactors, self.initial)
-            result = self.isam.calculateEstimate()
-            self.lastPose = result.atPose3(self.pose_counter)
-            self.newFactors = gtsam.NonlinearFactorGraph()
-            self.initial = gtsam.Values()
-            self.K = 0
-            self.odometry_to_add.pop(t)
+    # ------------------------------------------------------------------
+    # Core optimisation
+    # ------------------------------------------------------------------
 
-        self.Result = self.isam.calculateEstimate()
+    def process_new_keyframes(self):
+        """Incrementally add new keyframes to the factor graph and optimise."""
+        all_kfs = self.map_.get_all_keyframes()
+        new_kfs = [kf for kf in all_kfs if kf.id_ not in self.processed_keyframe_ids]
+        if not new_kfs:
+            return
+        new_kfs.sort(key=lambda kf: kf.id_)
 
-    def optimization_loop(self):
-        pass
+        new_factors = gtsam.NonlinearFactorGraph()
+        new_values = gtsam.Values()
 
-    def plot(self):
-        # plot positions
-        poses = gtsam.utilities.allPose2s(self.Result)
-        landmarks = gtsam.utilities.extractPoint2(self.Result)
-        positions = np.array([poses.atPose2(key).translation()
-                            for key in poses.keys()])
-        print(positions.shape)
-        fig = px.scatter(x=positions[:,0],y=positions[:,1])
-        fig.add_scatter(x=landmarks[:,0], y=landmarks[:,1], mode="markers", showlegend= False)
-        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-        fig.update_yaxes(scaleanchor = "x", scaleratio = 1)
-        fig.show()
+        for kf in new_kfs:
+            pose_key = X(kf.id_)
+            gtsam_pose = self._to_gtsam_pose(kf.pose_)
+
+            # Prior on the very first keyframe
+            if len(self.processed_keyframe_ids) == 0:
+                new_factors.add(
+                    gtsam.PriorFactorPose3(pose_key, gtsam_pose, self.prior_noise))
+
+            # Odometry to the previous keyframe
+            if len(self.processed_keyframe_ids) > 0:
+                prev_id = self.processed_keyframe_ids[-1]
+                prev_kf = next(k for k in all_kfs if k.id_ == prev_id)
+                prev_gtsam = self._to_gtsam_pose(prev_kf.pose_)
+                relative = prev_gtsam.between(gtsam_pose)
+                new_factors.add(gtsam.BetweenFactorPose3(
+                    X(prev_id), pose_key, relative, self.odometry_noise))
+
+            # Initial estimate for this pose
+            new_values.insert(pose_key, gtsam_pose)
+
+            # Projection factors for every observed landmark
+            for feat in kf.features_left_:
+                if feat.map_point_ is None or feat.is_outlier_:
+                    continue
+
+                mp = feat.map_point_
+                lm_key = L(mp.id_)
+                u, v = feat.position_.pt
+                measurement = np.array([u, v])
+
+                new_factors.add(gtsam.GenericProjectionFactorCal3_S2(
+                    measurement, self.projection_noise,
+                    pose_key, lm_key, self.calibration,
+                    False, False))  # throwCheirality, verboseCheirality
+
+                # First time seeing this landmark -> add initial value + loose prior
+                if mp.id_ not in self.initialized_landmarks:
+                    new_values.insert(lm_key, Point3(mp.pos_))
+                    new_factors.add(gtsam.PriorFactorPoint3(
+                        lm_key, Point3(mp.pos_), self.landmark_prior_noise))
+                    self.initialized_landmarks.add(mp.id_)
+
+            self.processed_keyframe_ids.append(kf.id_)
+
+        # --- Run iSAM2 ---
+        try:
+            self.isam.update(new_factors, new_values)
+            self.isam.update()  # extra Gauss-Newton iteration
+            self.result = self.isam.calculateEstimate()
+            self._update_map(all_kfs)
+            print(f"[Backend] Optimised: {len(self.processed_keyframe_ids)} poses, "
+                  f"{len(self.initialized_landmarks)} landmarks")
+        except Exception as e:
+            print(f"[Backend] Optimisation error: {e}")
+
+    def _update_map(self, keyframes):
+        """Write optimised poses and landmarks back into the map."""
+        if self.result is None:
+            return
+
+        for kf in keyframes:
+            key = X(kf.id_)
+            if self.result.exists(key):
+                kf.pose_ = self._to_T_cw(self.result.atPose3(key))
+
+        for mp in self.map_.get_all_map_points():
+            key = L(mp.id_)
+            if self.result.exists(key):
+                mp.pos_ = self.result.atPoint3(key)
+
+    # ------------------------------------------------------------------
+    # Live 3-D plot
+    # ------------------------------------------------------------------
+
+    def plot_live(self):
+        """Refresh an interactive matplotlib 3-D plot."""
+        keyframes = self.map_.get_all_keyframes()
+        all_points = self.map_.get_all_map_points()
+
+        if not keyframes:
+            return
+
+        if self.fig is None:
+            self.fig = plt.figure("SLAM Backend", figsize=(10, 8))
+            self.ax = self.fig.add_subplot(111, projection='3d')
+
+        self.ax.cla()
+
+        # Camera trajectory (world frame)
+        cam_pos = []
+        for kf in keyframes:
+            T_wc = np.linalg.inv(kf.pose_)
+            cam_pos.append(T_wc[:3, 3])
+        cam_pos = np.array(cam_pos)
+
+        self.ax.plot(cam_pos[:, 0], cam_pos[:, 2], -cam_pos[:, 1],
+                     'b-o', markersize=5, linewidth=2, label='Trajectory')
+        self.ax.scatter([cam_pos[0, 0]], [cam_pos[0, 2]], [-cam_pos[0, 1]],
+                        c='g', s=100, zorder=5, label='Start')
+
+        # Map points
+        if all_points:
+            pts = np.array([mp.pos_ for mp in all_points if not mp.is_outlier_])
+            if len(pts) > 0:
+                mask = (pts[:, 2] > 0.05) & (pts[:, 2] < 20.0)
+                pts = pts[mask]
+                if len(pts) > 0:
+                    self.ax.scatter(pts[:, 0], pts[:, 2], -pts[:, 1],
+                                   s=1, c='r', alpha=0.3,
+                                   label=f'Points ({len(pts)})')
+
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Z (depth)')
+        self.ax.set_zlabel('Y')
+        self.ax.set_title(
+            f'Backend Optimisation - {len(keyframes)} KFs, {len(all_points)} pts')
+        self.ax.legend(loc='upper right')
+        self.ax.set_box_aspect([1, 1, 1])
+
+        plt.draw()
+        plt.pause(0.01)
