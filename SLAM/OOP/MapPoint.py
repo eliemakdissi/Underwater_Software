@@ -48,3 +48,25 @@ class MapPoint:
         new_point = MapPoint(id=MapPoint._next_id, position=position)
         MapPoint._next_id += 1
         return new_point
+    
+    def remove_observation(self, feature_to_remove):
+
+        idx_to_remove = None
+
+        for i, ref_feature in self.observations_:
+            feature = ref_feature()
+
+            if feature is None or feature is feature_to_remove:
+                idx_to_remove=i
+        
+        if idx_to_remove:
+            self.observations_.pop(idx_to_remove)
+            self.observed_times_-=1
+
+        if self.observed_times_<=0:
+            self.is_outlier_=True
+
+
+
+
+
