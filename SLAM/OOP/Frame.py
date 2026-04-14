@@ -19,7 +19,7 @@ class Frame:
     clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
 
     # Feature detection
-    sift = cv.SIFT_create(contrastThreshold=0.005, edgeThreshold=10, nOctaveLayers=4)
+    sift = cv.SIFT_create(contrastThreshold=0.02, edgeThreshold=10, nOctaveLayers=4)
     orb = cv.ORB_create(nfeatures=10000, scaleFactor=1.2, nlevels=8)
     akaze = cv.AKAZE_create(threshold = 0.001, diffusivity = cv.KAZE_DIFF_CHARBONNIER)
 

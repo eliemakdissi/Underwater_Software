@@ -12469,3 +12469,4 @@ SLAM/data_sortie_mer
 SLAM/ops/__pycache__/generate_cloud.cpython-312.pyc
 SLAM/ops/__pycache__/preprocess.cpython-312.pyc
 SLAM/OOP/__pycache__
+map_optimisee.ply
