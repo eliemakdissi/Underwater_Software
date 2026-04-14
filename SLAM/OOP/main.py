@@ -6,14 +6,16 @@ import os
 from Frame import Frame
 from Map import Map
 from Frontend import Frontend
+from Backend2 import Backend
 
 def main():
     print("--- Initialisation du SLAM ---")
-    
+
     # 1. Initialisation de l'architecture
     slam_map = Map()
     # Assure-toi que Frame.params contient bien tes paramètres de calibration stéréo
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map)
+    backend = Backend(params_stereo=Frame.params, slam_map=slam_map)
 
     # Variables pour le visuel final
     trajectoire_camera = []
@@ -67,57 +69,27 @@ def main():
                        cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             
             cv.imshow("SLAM Tracking", vis_img)
-            cv.waitKey(1) # Laisse l'image affichée 1ms
-            
-        else:
-            print(f"❌ Échec du tracking sur la frame {i}")
+            cv.waitKey(1)
 
-        print(f"Frame {i} traitée en {(time.time() - t_start)*1000:.1f} ms")
+            # Backend optimisation + live plot
+            backend.process_new_keyframes()
+            backend.plot_live()
+
+        else:
+            print(f"Echec du tracking sur la frame {i}")
+
+        print(f"Frame {i} traitee en {(time.time() - t_start)*1000:.1f} ms")
 
     cv.destroyAllWindows()
 
     # ==========================================
-    # DEBUG VISUEL : Fin de run (Matplotlib 3D)
+    # Final optimised 3D plot (blocking)
     # ==========================================
-    print("\n--- Génération de la Carte 3D ---")
-    
-    tous_les_points = slam_map.get_all_map_points()
-    if len(tous_les_points) == 0:
-        print("La carte est vide !")
-        return
-
-    # Extraction des coordonnées X,Y,Z
-    xyz_global = np.array([mp.pos_ for mp in tous_les_points])
-    trajectoire = np.array(trajectoire_camera)
-
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Filtre les points aberrants pour l'affichage (ex: Z > 20m ou Z < 0)
-    mask = (xyz_global[:, 2] > 0.05) & (xyz_global[:, 2] < 20.0)
-    p3d = xyz_global[mask]
-
-    # Nuage de points (Rouge)
-    ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r', alpha=0.5, label="MapPoints")
-    
-    # Trajectoire de la caméra (Bleu)
-    if len(trajectoire) > 0:
-        ax.plot(trajectoire[:, 0], trajectoire[:, 2], -trajectoire[:, 1], 
-                c='b', linewidth=2, marker='o', markersize=4, label="Trajectoire Caméra")
-        
-        # Marquer le point de départ en vert
-        ax.scatter(trajectoire[0, 0], trajectoire[0, 2], -trajectoire[0, 1], c='g', s=50, label="Départ", zorder=5)
-
-    ax.set_xlabel('X (Droite/Gauche)')
-    ax.set_ylabel('Z (Profondeur)')
-    ax.set_zlabel('Y (Haut/Bas)')
-    
-    # Ajuster le ratio des axes pour une vue plus réaliste
-    ax.set_box_aspect([1, 1, 1]) 
-    
-    plt.title(f"Carte 3D du SLAM ({len(p3d)} points, {len(slam_map.get_all_keyframes())} Keyframes)")
-    plt.legend()
-    plt.show()
+    print("\n--- Carte 3D optimisee ---")
+    plt.ioff()
+    backend.plot_live()          # one last refresh with final state
+    plt.ioff()                   # switch to blocking mode
+    plt.show()                   # keeps the window open until closed
 
 if __name__ == '__main__':
     main()

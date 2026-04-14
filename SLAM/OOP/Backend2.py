@@ -40,7 +40,7 @@ class Backend:
         # --- iSAM2 ---
         isam_params = gtsam.ISAM2Params()
         isam_params.setRelinearizeThreshold(0.1)
-        isam_params.setRelinearizeSkip(1)
+        isam_params.relinearizeSkip = 1
         self.isam = gtsam.ISAM2(isam_params)
 
         # --- Bookkeeping ---
