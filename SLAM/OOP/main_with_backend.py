@@ -38,14 +38,14 @@ def main():
     backend = Backend(map=slam_map, params_stereo=Frame.params)
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
-    start_frame = 300
-    end_frame = 400 
+    start_frame = 2410
+    end_frame = 2445
     
-    for i in range(start_frame, end_frame):
+    for i in range(start_frame, end_frame, 30):
         t_start = time.time()
    
-        path_l = f'SLAM/images_test/image_caillou/frame_{i:04d}_l.jpg'
-        path_r = f'SLAM/images_test/image_caillou/frame_{i:04d}_r.jpg'
+        path_l = f'SLAM/data_sortie_mer/frames/gauche/sortie_left/frames/frame_{i+1:06d}.jpg'
+        path_r = f'SLAM/data_sortie_mer/frames/droite/sortie_right/frames/frame_{i+1:06d}.jpg'
         
         if not os.path.exists(path_l) or not os.path.exists(path_r):
              continue
@@ -57,7 +57,7 @@ def main():
         success = frontend.add_frame(current_frame)
 
         if success:
-            vis_img = img_l.copy()
+            vis_img = cv.cvtColor(current_frame.clean_left_img_, cv.COLOR_GRAY2BGR)
             #On dessine les inliers
             inliers = [f for f in current_frame.features_left_ if f.map_point_ is not None]
             for feat in inliers:
@@ -67,6 +67,9 @@ def main():
                        (20, 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             cv.imshow("SLAM Live Tracking", vis_img)
             cv.waitKey(1)
+
+        else:
+            print('not success')
 
             
         print(f"Frame {i:03d} | Latence: {(time.time() - t_start)*1000:.1f}ms")
@@ -101,6 +104,9 @@ def main():
         traj_pts.append(T_wc[:3, 3])
     
     trajectory = np.array(traj_pts)
+    if len(trajectory) == 0:
+        print("Erreur : Aucune trajectoire n'a été calculée (le SLAM ne s'est jamais initialisé).")
+        return
 
     # Plot 3D
     fig = plt.figure(figsize=(10, 7))

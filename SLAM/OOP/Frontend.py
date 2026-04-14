@@ -76,8 +76,8 @@ class Frontend():
             knnMatches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
             # Test de Lowe
-            LOWE = 0.75
-            MAX_EPIPOLAR = 2
+            LOWE = 0.95
+            MAX_EPIPOLAR = 15
 
             for match in knnMatches:
                 if len(match) == 2:
@@ -89,6 +89,30 @@ class Frontend():
                         if np.abs(features_l[idx_l].position_.pt[1]-features_r[idx_r].position_.pt[1]) <= MAX_EPIPOLAR:
                             idx_l_bruts.append(idx_l)
                             idx_r_bruts.append(idx_r)
+        """
+        debug_matches = []
+        for i in range(len(idx_l_bruts)):
+            debug_matches.append(cv.DMatch(idx_l_bruts[i], idx_r_bruts[i], 0))
+
+        kp_l = [f.position_ for f in features_l]
+        kp_r = [f.position_ for f in features_r]
+
+        img_stereo = cv.drawMatches(
+            self.current_frame_.clean_left_img_, kp_l,
+            self.current_frame_.clean_right_img_, kp_r,
+            debug_matches, None, 
+            flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+            matchColor=(0, 255, 0)
+        )
+            
+        img_stereo_resized = cv.resize(img_stereo, (0, 0), fx=0.5, fy=0.5)
+        cv.imshow("DEBUG : Stéréo Matching", img_stereo_resized)
+        
+        # 4. LA PAUSE : Le programme s'arrête ici jusqu'à ce que tu appuies sur une touche
+        print(f"PAUSE DEBUG : {len(idx_l_bruts)} matchs trouvés. Appuie sur n'importe quelle touche pour continuer...")
+        print(f'{len(self.current_frame_.features_left_)} feature left et {len(self.current_frame_.features_right_)}')
+        cv.waitKey(0)
+        """
 
 
         # Matching avec bins mais un indice à la fois
@@ -182,8 +206,8 @@ class Frontend():
             print("Tracking LOST : not enough 3D points in the previous frame")
             return False
         
-        previous_desc = np.array(previous_desc, dtype=np.uint8)
-        new_desc = np.array([feature.descriptor_ for feature in self.current_frame_.features_left_], dtype=np.uint8)
+        previous_desc = np.array(previous_desc, dtype=np.float32)
+        new_desc = np.array([feature.descriptor_ for feature in self.current_frame_.features_left_], dtype=np.float32)
 
         knnMatchs = self.matcher.knnMatch(previous_desc, new_desc, k=2)
 
@@ -192,7 +216,7 @@ class Frontend():
         good_matches_new_idx = []
         good_matches_old_idx = []
 
-        lowe = 0.75
+        lowe = 0.95
         for match in knnMatchs:
             if len(match)==2:
                 m,n = match
@@ -207,6 +231,40 @@ class Frontend():
                     good_matches_old_idx.append(m.queryIdx)
                     good_matches_new_idx.append(m.trainIdx)
 
+        
+        kp_l = []
+        kp_r = []
+        debug_matches = []
+
+        for i in range(len(good_matches_new_idx)):
+            # Attention : l'ancien index correspond à la liste des points 3D filtrés
+            old_idx = good_matches_old_idx[i]
+            old_feature = previous_feature3D[old_idx] 
+            
+            # Le nouvel index correspond à toutes les features de la frame actuelle
+            new_idx = good_matches_new_idx[i]
+            new_feature = self.current_frame_.features_left_[new_idx]
+
+            kp_l.append(old_feature.position_)
+            kp_r.append(new_feature.position_)
+            
+            # Puisque nos listes kp_l et kp_r sont parfaitement alignées, 
+            # on relie simplement la position i à la position i
+            debug_matches.append(cv.DMatch(i, i, 0))
+
+        img_stereo = cv.drawMatches(
+            self.previous_frame_.clean_left_img_, kp_l,
+            self.current_frame_.clean_left_img_, kp_r,
+            debug_matches, None, 
+            flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+            matchColor=(0, 255, 0)
+        )
+            
+        img_stereo_resized = cv.resize(img_stereo, (0, 0), fx=0.5, fy=0.5)
+        cv.imshow("DEBUG : Temporal Tracking", img_stereo_resized)
+        
+        print(f"⏸️ PAUSE DEBUG : {len(good_matches_new_idx)} matchs temporels trouvés. Appuie sur une touche...")
+        cv.waitKey(0)
 
         if len(matched_3d_pts) >= 15:
             pts3d_arr = np.float32(matched_3d_pts)
@@ -216,9 +274,9 @@ class Frontend():
             # PnP + Ransac
             success, rvec_new, tvec_new, inliers = cv.solvePnPRansac(
                 pts3d_arr, pts2d_arr, K, None, 
-                flags=cv.SOLVEPNP_ITERATIVE,
+                flags=cv.SOLVEPNP_EPNP,
                 iterationsCount=100,
-                reprojectionError=10.0
+                reprojectionError=15.0
             )
             
             if success and inliers is not None and len(inliers) >= 10:
@@ -227,9 +285,52 @@ class Frontend():
                 T_cw_new = np.eye(4)
                 T_cw_new[:3, :3] = R_new
                 T_cw_new[:3, 3] = tvec_new.flatten()
+
+                print(R_new, tvec_new.flatten())
                 
                 self.current_frame_.pose_ = T_cw_new
                 self.num_frames_since_last_kf_ += 1
+
+
+                kp_l = []
+                kp_r = []
+                debug_matches = []
+
+                # inliers est un tableau 2D (ex: [[0], [3], [4]...]), on l'aplatit
+                inliers_flat = inliers.flatten()
+
+                for draw_idx, original_match_idx in enumerate(inliers_flat):
+                    # On récupère les indices originaux validés par RANSAC
+                    old_idx = good_matches_old_idx[original_match_idx]
+                    new_idx = good_matches_new_idx[original_match_idx]
+                    
+                    old_feature = previous_feature3D[old_idx]
+                    new_feature = self.current_frame_.features_left_[new_idx]
+
+                    # On lie la nouvelle feature au point 3D (Ton code original)
+                    map_point = old_feature.map_point_
+                    new_feature.map_point_ = map_point
+                    map_point.add_observation(new_feature)
+
+                    # On prépare l'affichage
+                    kp_l.append(old_feature.position_)
+                    kp_r.append(new_feature.position_)
+                    debug_matches.append(cv.DMatch(draw_idx, draw_idx, 0))
+
+                # Dessin
+                img_inliers = cv.drawMatches(
+                    self.previous_frame_.clean_left_img_, kp_l,
+                    self.current_frame_.clean_left_img_, kp_r,
+                    debug_matches, None, 
+                    flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+                    matchColor=(0, 255, 0)
+                )
+                    
+                img_inliers_resized = cv.resize(img_inliers, (0, 0), fx=0.5, fy=0.5)
+                cv.imshow("DEBUG : Inliers RANSAC", img_inliers_resized)
+                
+                print(f"⏸️ PAUSE DEBUG : {len(inliers_flat)} INLIERS validés. Appuie sur une touche...")
+                cv.waitKey(0)
                 
                 # On lie les nouvelles features aux anciens pts 3D
                 for i in inliers.flatten():
@@ -346,13 +447,13 @@ class Frontend():
                 continue
 
             # On utilise maintenant idx_l_research (les orphelins) pour le desc_l
-            desc_l = np.array([features_l[i].descriptor_ for i in idx_l_research], dtype=np.uint8)
-            desc_r = np.array([features_r[i].descriptor_ for i in idx_r_research], dtype=np.uint8)
+            desc_l = np.array([features_l[i].descriptor_ for i in idx_l_research], dtype=np.float32)
+            desc_r = np.array([features_r[i].descriptor_ for i in idx_r_research], dtype=np.float32)
 
             knnMatches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
-            LOWE = 0.75
-            MAX_EPIPOLAR = 2
+            LOWE = 0.95
+            MAX_EPIPOLAR = 15
             for match in knnMatches:
                 if len(match) == 2:
                     m, n = match

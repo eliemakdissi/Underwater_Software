@@ -19,11 +19,9 @@ class Frame:
     clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
 
     # Feature detection
-
-    sift = cv.SIFT_create(contrastThreshold=0.02, edgeThreshold=10, nOctaveLayers=4)
+    sift = cv.SIFT_create(contrastThreshold=0.005, edgeThreshold=10, nOctaveLayers=4)
     orb = cv.ORB_create(nfeatures=10000, scaleFactor=1.2, nlevels=8)
     akaze = cv.AKAZE_create(threshold = 0.001, diffusivity = cv.KAZE_DIFF_CHARBONNIER)
-
 
     _next_id = 0
 
@@ -75,9 +73,12 @@ class Frame:
 
         img_l_rect = cv.remap(self.left_img_, Frame.mapl_x, Frame.mapl_y, cv.INTER_LINEAR)
         img_r_rect = cv.remap(self.right_img_, Frame.mapr_x, Frame.mapr_y, cv.INTER_LINEAR)
+        
 
         self.clean_left_img_ = Frame.clahe.apply(img_l_rect[:,:,1])
         self.clean_right_img_ = Frame.clahe.apply(img_r_rect[:,:,1])
+      
+
 
         return True
     
