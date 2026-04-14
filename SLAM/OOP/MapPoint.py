@@ -53,7 +53,7 @@ class MapPoint:
 
         idx_to_remove = None
 
-        for i, ref_feature in self.observations_:
+        for i, ref_feature in enumerate(self.observations_):
             feature = ref_feature()
 
             if feature is None or feature is feature_to_remove:

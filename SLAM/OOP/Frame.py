@@ -8,7 +8,7 @@ from Feature import Feature
 
 class Frame:
 
-    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+    with open('SLAM/calibration/param/stereo_a_lenvers.pkl', 'rb') as f:
         params = pickle.load(f)
 
     # Preprocessing
@@ -22,6 +22,7 @@ class Frame:
 
     sift = cv.SIFT_create(contrastThreshold=0.02, edgeThreshold=10, nOctaveLayers=4)
     orb = cv.ORB_create(nfeatures=10000, scaleFactor=1.2, nlevels=8)
+    akaze = cv.AKAZE_create(threshold = 0.001, diffusivity = cv.KAZE_DIFF_CHARBONNIER)
 
 
     _next_id = 0
@@ -81,8 +82,8 @@ class Frame:
         return True
     
     def extract_features(self):
-        key_l, desc_l = Frame.orb.detectAndCompute(self.clean_left_img_, None)
-        key_r, desc_r = Frame.orb.detectAndCompute(self.clean_right_img_, None)
+        key_l, desc_l = Frame.sift.detectAndCompute(self.clean_left_img_, None)
+        key_r, desc_r = Frame.sift.detectAndCompute(self.clean_right_img_, None)
 
         for i in range(len(key_l)):
             new_feature = Feature(frame=self, keypoint=key_l[i], descriptor=desc_l[i])
@@ -98,7 +99,7 @@ class Frame:
 
         self.bins_l = {}
         self.bins_r = {}
-        self.BIN_SIZE = 50
+        self.BIN_SIZE = 25
 
         for i, feature in enumerate(self.features_left_) :
             bin_nb = int(feature.position_.pt[1]/self.BIN_SIZE)
