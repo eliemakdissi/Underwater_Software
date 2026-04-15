@@ -139,12 +139,42 @@ class Backend:
         try:
             self.isam.update(new_factors, new_values)
             self.isam.update()  # extra Gauss-Newton iteration
+            self._marginalize_old_landmarks()
             self.result = self.isam.calculateEstimate()
             self._update_map(all_kfs)
             print(f"[Backend] Optimised: {len(self.processed_keyframe_ids)} poses, "
                   f"{len(self.initialized_landmarks)} landmarks")
         except Exception as e:
             print(f"[Backend] Optimisation error: {e}")
+
+    def _marginalize_old_landmarks(self):
+        """Remove old landmarks from iSAM2 to bound computation."""
+        if len(self.initialized_landmarks) <= self.max_landmarks:
+            return
+
+        n_to_remove = len(self.initialized_landmarks) - self.max_landmarks
+
+        # Marginalize the least recently observed landmarks first
+        sorted_by_age = sorted(
+            self.initialized_landmarks,
+            key=lambda lid: self.landmark_last_seen.get(lid, 0)
+        )
+        to_remove = sorted_by_age[:n_to_remove]
+
+        keys_to_marginalize = gtsam.KeyVector()
+        for lid in to_remove:
+            keys_to_marginalize.append(L(lid))
+
+        try:
+            self.isam.marginalizeLeaves(keys_to_marginalize)
+            for lid in to_remove:
+                self.initialized_landmarks.discard(lid)
+                self.marginalized_landmarks.add(lid)
+                self.landmark_last_seen.pop(lid, None)
+            print(f"[Backend] Marginalized {len(to_remove)} old landmarks, "
+                  f"{len(self.initialized_landmarks)} remaining")
+        except Exception as e:
+            print(f"[Backend] Marginalization error: {e}")
 
     def _update_map(self, keyframes):
         """Write optimised poses and landmarks back into the map."""

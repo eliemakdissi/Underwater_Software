@@ -159,10 +159,10 @@ class Map:
         fig.update_layout(
             title=f'SLAM Live - {n_kf} KFs, {n_pts} pts',
             scene=dict(
-                xaxis_title='X',
-                yaxis_title='Z (depth)',
-                zaxis_title='Y',
-                aspectmode='data',
+                xaxis=dict(title='X', range=[-5, 5]),
+                yaxis=dict(title='Z (depth)', range=[-5, 5]),
+                zaxis=dict(title='Y', range=[-5, 5]),
+                aspectmode='cube',
                 uirevision='slam-scene',
             ),
             uirevision='slam',
