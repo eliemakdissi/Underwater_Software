@@ -62,17 +62,37 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     # Debug lignes épipolaires
     
-    vis_g = cv.resize(img_l_rect, (640, 480)) # Redimensionner pour affichage
-    vis_d = cv.resize(img_r_rect, (640, 480))
-    combined = cv.hconcat([vis_g, vis_d])
+    # ==========================================
+    # Debug lignes épipolaires (Zoom Synchronisé)
+    # ==========================================
     
-    # Dessiner des lignes horizontales vertes tous les 30 pixels
-    for y in range(0, combined.shape[0], 30):
-        cv.line(combined, (0, y), (combined.shape[1], y), (0, 255, 0), 1)
-        
-    cv.imshow("Test Epipolaire", combined)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+    # Conversion BGR -> RGB pour un affichage correct avec Matplotlib
+    img_l_rgb = cv.cvtColor(img_l_rect, cv.COLOR_BGR2RGB)
+    img_r_rgb = cv.cvtColor(img_r_rect, cv.COLOR_BGR2RGB)
+
+    # Création de la figure avec 2 axes liés (c'est sharex et sharey qui font la magie)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7), sharex=True, sharey=True)
+
+    # Affichage Image Gauche
+    ax1.imshow(img_l_rgb)
+    ax1.set_title("Image Gauche Rectifiée")
+    ax1.axis('off')
+
+    # Affichage Image Droite
+    ax2.imshow(img_r_rgb)
+    ax2.set_title("Image Droite Rectifiée")
+    ax2.axis('off')
+
+    # Tracé des lignes horizontales (tous les 50 pixels) sur les DEUX images
+    h_img = img_l_rgb.shape[0]
+    for y in range(0, h_img, 50):
+        # axhline trace une ligne horizontale infinie (idéal pour l'épipolaire)
+        ax1.axhline(y, color='lime', linewidth=1, alpha=0.5)
+        ax2.axhline(y, color='lime', linewidth=1, alpha=0.5)
+
+    plt.suptitle("Test Épipolaire interactif\nPrenez l'outil loupe et zoomez sur un détail, l'autre image suivra !", fontsize=14)
+    plt.tight_layout()
+    plt.show() # Le code se met en pause ici tant que la fenêtre est ouverte)
     
 
     img_l_clean = preprocess.cl_vert(img_l_rect)
