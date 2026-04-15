@@ -11,10 +11,15 @@ class Frame:
     with open('SLAM/calibration/param/stereo_a_lenvers.pkl', 'rb') as f:
         params = pickle.load(f)
 
+    # Preprocessing
+    '''
+    mapl_x, mapl_y = cv.initUndistortRectifyMap(params['mtx1'], params['dist1'], params['R1'], params['P1'], (1920,1080), cv.CV_32FC1)
+    mapr_x, mapr_y = cv.initUndistortRectifyMap(params['mtx2'], params['dist2'], params['R2'], params['P2'], (1920,1080), cv.CV_32FC1)
+    '''
     clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
 
     # Feature detection
-    sift = cv.SIFT_create(contrastThreshold=0.005, edgeThreshold=10, nOctaveLayers=4)
+    sift = cv.SIFT_create(contrastThreshold=0.01)
     orb = cv.ORB_create(nfeatures=10000, scaleFactor=1.2, nlevels=8)
     akaze = cv.AKAZE_create(threshold = 0.001, diffusivity = cv.KAZE_DIFF_CHARBONNIER)
 
@@ -66,14 +71,15 @@ class Frame:
     
     def preprocess(self): 
 
-        img_l_rect = cv.remap(self.left_img_, Frame.params, Frame.mapl_y, cv.INTER_LINEAR)
-        img_r_rect = cv.remap(self.right_img_, Frame.mapr_x, Frame.mapr_y, cv.INTER_LINEAR)
+        img_l_undist = cv.undistort(self.left_img_, Frame.params['mtx1'], Frame.params['dist1'], Frame.params['mtx1'])
+        img_r_undist = cv.undistort(self.right_img_, Frame.params['mtx2'], Frame.params['dist2'], Frame.params['mtx2'])
         
 
-        self.clean_left_img_ = Frame.clahe.apply(img_l_rect[:,:,1])
-        self.clean_right_img_ = Frame.clahe.apply(img_r_rect[:,:,1])
-      
+        self.clean_left_img_ = Frame.clahe.apply(img_l_undist[:,:,1])
+        self.clean_right_img_ = Frame.clahe.apply(img_r_undist[:,:,1])
 
+        self.clean_left_img_ = img_l_undist[:,:,1]
+        self.clean_right_img_ = img_r_undist[:,:,1]
 
         return True
     

@@ -3,11 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import os
+import time
 
-
-from Frame import Frame
+from Frame_without_rectify import Frame
 from Map import Map
-from Frontend import Frontend
+from Frontend_without_rectify import Frontend
 from Backend import Backend
 
 def save_point_cloud_ply(filename, xyz_points):
@@ -38,14 +38,14 @@ def main():
     backend = Backend(map=slam_map, params_stereo=Frame.params)
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
-    start_frame = 2410
-    end_frame = 2445
+    start_frame = 1
+    end_frame = 50
     
-    for i in range(start_frame, end_frame, 30):
+    for i in range(start_frame, end_frame, 1):
         t_start = time.time()
    
-        path_l = f'SLAM/data_sortie_mer/frames/gauche/sortie_left/frames/frame_{i+1:06d}.jpg'
-        path_r = f'SLAM/data_sortie_mer/frames/droite/sortie_right/frames/frame_{i+1:06d}.jpg'
+        path_l = f'SLAM/images_test/image_caillou/frame_{i+1:04d}_l.jpg'
+        path_r = f'SLAM/images_test/image_caillou/frame_{i+1:04d}_r.jpg'
         
         if not os.path.exists(path_l) or not os.path.exists(path_r):
              continue
