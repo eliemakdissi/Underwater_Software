@@ -231,6 +231,8 @@ class Frontend():
                     good_matches_old_idx.append(m.queryIdx)
                     good_matches_new_idx.append(m.trainIdx)
 
+        # Debug
+        '''
         
         kp_l = []
         kp_r = []
@@ -263,8 +265,10 @@ class Frontend():
         img_stereo_resized = cv.resize(img_stereo, (0, 0), fx=0.5, fy=0.5)
         cv.imshow("DEBUG : Temporal Tracking", img_stereo_resized)
         
-        print(f"⏸️ PAUSE DEBUG : {len(good_matches_new_idx)} matchs temporels trouvés. Appuie sur une touche...")
+        print(f"⏸PAUSE DEBUG : {len(good_matches_new_idx)} matchs temporels trouvés. Appuie sur une touche...")
         cv.waitKey(0)
+
+        '''
 
         if len(matched_3d_pts) >= 15:
             pts3d_arr = np.float32(matched_3d_pts)
@@ -292,6 +296,8 @@ class Frontend():
                 self.num_frames_since_last_kf_ += 1
 
 
+                # Debug
+                '''
                 kp_l = []
                 kp_r = []
                 debug_matches = []
@@ -331,6 +337,7 @@ class Frontend():
                 
                 print(f"⏸️ PAUSE DEBUG : {len(inliers_flat)} INLIERS validés. Appuie sur une touche...")
                 cv.waitKey(0)
+                '''
                 
                 # On lie les nouvelles features aux anciens pts 3D
                 for i in inliers.flatten():
@@ -408,7 +415,7 @@ class Frontend():
         if self.backend_ is not None:
 
             optim_thread = threading.Thread(target=self.backend_.update_map)
-            optim_thread.daemon = True # Le thread s'arrêtera si on ferme le programme
+            optim_thread.daemon = True 
             optim_thread.start()
 
   
@@ -418,7 +425,6 @@ class Frontend():
         features_l = self.current_frame_.features_left_
         features_r = self.current_frame_.features_right_
         
-        # On s'assure que les bins sont calculés pour la frame courante
         self.current_frame_.compute_bins() 
 
         # On récupère les bins globaux déjà calculés
@@ -430,7 +436,6 @@ class Frontend():
 
         for bin_idx, idx_l_all in bins_l.items():
             
-            # --- LE FILTRE CRUCIAL ---
             # Dans ce bin, on ne garde QUE les indices des features qui n'ont PAS de map_point
             idx_l_research = [i for i in idx_l_all if features_l[i].map_point_ is None]
             
@@ -446,7 +451,6 @@ class Frontend():
             if len(idx_r_research) < 2:
                 continue
 
-            # On utilise maintenant idx_l_research (les orphelins) pour le desc_l
             desc_l = np.array([features_l[i].descriptor_ for i in idx_l_research], dtype=np.float32)
             desc_r = np.array([features_r[i].descriptor_ for i in idx_r_research], dtype=np.float32)
 

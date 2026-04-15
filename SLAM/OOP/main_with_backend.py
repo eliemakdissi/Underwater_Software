@@ -14,7 +14,7 @@ def save_point_cloud_ply(filename, xyz_points):
     """
     Sauvegarde un tableau numpy de points 3D au format .ply ASCII.
     """
-    print(f"💾 Sauvegarde du nuage de points dans {filename}...")
+    print(f"Sauvegarde du nuage de points dans {filename}...")
     with open(filename, 'w') as f:
         # En-tête strict du format PLY
         f.write("ply\n")
