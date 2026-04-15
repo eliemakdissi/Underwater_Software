@@ -50,7 +50,7 @@ def main():
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
     start_frame = 20
-    end_frame = 150
+    end_frame = 250
 
     for i in range(start_frame, end_frame):
         t_start = time.time()
