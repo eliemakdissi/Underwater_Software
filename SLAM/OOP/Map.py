@@ -114,8 +114,8 @@ class Map:
                 T_wc = np.linalg.inv(kf.pose_)
                 cam_pos.append(T_wc[:3, 3])
             cam_pos = np.array(cam_pos)
-            traj_x, traj_y, traj_z = cam_pos[:, 0], cam_pos[:, 2], -cam_pos[:, 1]
-            start_x, start_y, start_z = [cam_pos[0, 0]], [cam_pos[0, 2]], [-cam_pos[0, 1]]
+            traj_x, traj_y, traj_z = cam_pos[:, 0], cam_pos[:, 2], cam_pos[:, 1]
+            start_x, start_y, start_z = [cam_pos[0, 0]], [cam_pos[0, 2]], [cam_pos[0, 1]]
 
         # --- Points trace (always present, empty if no data) ---
         pts_x, pts_y, pts_z = [], [], []
@@ -127,7 +127,7 @@ class Map:
                 mask = (pts[:, 2] > 0.05) & (pts[:, 2] < 20.0)
                 pts = pts[mask]
                 if len(pts) > 0:
-                    pts_x, pts_y, pts_z = pts[:, 0], pts[:, 2], -pts[:, 1]
+                    pts_x, pts_y, pts_z = pts[:, 0], pts[:, 2], pts[:, 1]
                     n_pts_filtered = len(pts)
 
         n_kf = len(keyframes) if keyframes else 0
@@ -163,6 +163,7 @@ class Map:
                 yaxis=dict(title='Z (depth)', range=[-5, 5]),
                 zaxis=dict(title='Y', range=[-5, 5]),
                 aspectmode='cube',
+                dragmode='orbit',
                 uirevision='slam-scene',
             ),
             uirevision='slam',
