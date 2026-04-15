@@ -57,22 +57,31 @@ for img_g_path, img_d_path in zip(images_gauche, images_droite):
 
         corners2_g = cv.cornerSubPix(gray_g, corners_g, (11, 11), (-1, -1), criteria)
         corners2_d = cv.cornerSubPix(gray_d, corners_d, (11, 11), (-1, -1), criteria)
-        
+
         #Empeche les inversements
         # Dist point 1 gauche et point 1 droit
         dist_normale = np.linalg.norm(corners2_g[0] - corners2_d[0])
         # Dist point 1 gauche et dernier point droit
         dist_inverse = np.linalg.norm(corners2_g[0] - corners2_d[-1])
-        
+
         if dist_inverse < dist_normale:
             corners2_d = corners2_d[::-1]
 
+        # Visualize detected corners
+        vis_g = cv.drawChessboardCorners(img_g.copy(), CHESSBOARD_SIZE, corners2_g, ret_g)
+        vis_d = cv.drawChessboardCorners(img_d.copy(), CHESSBOARD_SIZE, corners2_d, ret_d)
+        vis = np.hstack([vis_g, vis_d])
+        vis_resized = cv.resize(vis, (0, 0), fx=1, fy=1)
+        pair_name = img_g_path.split('/')[-1]
+        cv.imshow(f"Corners - {pair_name} (press any key)", vis_resized)
+        cv.waitKey(0)
 
         paires_valides += 1
         objpoints.append(objp)
         imgpoints_gauche.append(corners2_g)
         imgpoints_droite.append(corners2_d)
 
+cv.destroyAllWindows()
 print(f"{paires_valides} paires valides trouvées sur {len(images_gauche)}.")
 
 if paires_valides < 10:

@@ -8,7 +8,7 @@ from Map import Map
 from Frontend import Frontend
 
 # ---- Choose backend: "g2o" or "gtsam" ----
-BACKEND_TYPE = "gtsam"
+BACKEND_TYPE = "g2o"
 
 if BACKEND_TYPE == "gtsam":
     from Backend2 import Backend
@@ -40,6 +40,7 @@ def main():
     
 
     slam_map = Map()
+    slam_map.start_dash_server()
 
     if BACKEND_TYPE == "gtsam":
         backend = Backend(params_stereo=Frame.params, slam_map=slam_map)
@@ -48,14 +49,14 @@ def main():
 
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
-    start_frame = 2
-    end_frame = 120
+    start_frame = 20
+    end_frame = 150
 
     for i in range(start_frame, end_frame):
         t_start = time.time()
 
-        path_l = f'SLAM/images_test/set_3_caillou/frame_{i:04d}_l.jpg'
-        path_r = f'SLAM/images_test/set_3_caillou/frame_{i:04d}_r.jpg'
+        path_l = f'SLAM/images_test/set_4_caillou/frame_{i:04d}_l.jpg'
+        path_r = f'SLAM/images_test/set_4_caillou/frame_{i:04d}_r.jpg'
         
         if not os.path.exists(path_l) or not os.path.exists(path_r):
              continue
@@ -76,7 +77,6 @@ def main():
     time.sleep(2.0)
 
     points_3d = slam_map.get_all_map_points()
-    keyframes = slam_map.get_all_keyframes()
 
     if not points_3d:
         print("Erreur : Aucun point dans la carte.")
@@ -90,41 +90,13 @@ def main():
 
     save_point_cloud_ply("map_optimisee.ply", xyz_clean)
 
-    if BACKEND_TYPE == "gtsam":
-        print(f"\n--- Processing complete. Live plot at http://0.0.0.0:8050 ---")
-        print("Press Ctrl+C to exit.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
-    else:
-        import matplotlib.pyplot as plt
-
-        kfs_sorted = sorted(keyframes, key=lambda x: x.id_)
-        traj_pts = []
-        for kf in kfs_sorted:
-            T_wc = np.linalg.inv(kf.pose)
-            traj_pts.append(T_wc[:3, 3])
-
-        trajectory = np.array(traj_pts)
-        if len(trajectory) == 0:
-            print("Erreur : Aucune trajectoire n'a été calculee.")
-            return
-
-        fig = plt.figure(figsize=(10, 7))
-        ax = fig.add_subplot(111, projection='3d')
-
-        mask = (xyz[:, 2] > 0.1) & (xyz[:, 2] < 15.0)
-        ax.scatter(xyz[mask, 0], xyz[mask, 2], -xyz[mask, 1], s=1, c='red', alpha=0.3, label="Points 3D")
-        ax.plot(trajectory[:, 0], trajectory[:, 2], -trajectory[:, 1], c='blue', marker='o', label="Trajectoire Optimisee")
-
-        ax.set_xlabel('X')
-        ax.set_ylabel('Z (Profondeur)')
-        ax.set_zlabel('Y (Hauteur)')
-        ax.legend()
-        plt.title(f"SLAM Final : {len(points_3d)} points, {len(keyframes)} Keyframes")
-        plt.show()
+    print(f"\n--- Processing complete. Live plot at http://0.0.0.0:8050 ---")
+    print("Press Ctrl+C to exit.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == '__main__':
     main()
