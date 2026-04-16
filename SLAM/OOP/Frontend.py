@@ -230,7 +230,45 @@ class Frontend():
                     good_matches_old_idx.append(m.queryIdx)
                     good_matches_new_idx.append(m.trainIdx)
 
+        # Debug
+        '''
         
+        kp_l = []
+        kp_r = []
+        debug_matches = []
+
+        for i in range(len(good_matches_new_idx)):
+            # Attention : l'ancien index correspond à la liste des points 3D filtrés
+            old_idx = good_matches_old_idx[i]
+            old_feature = previous_feature3D[old_idx] 
+            
+            # Le nouvel index correspond à toutes les features de la frame actuelle
+            new_idx = good_matches_new_idx[i]
+            new_feature = self.current_frame_.features_left_[new_idx]
+
+            kp_l.append(old_feature.position_)
+            kp_r.append(new_feature.position_)
+            
+            # Puisque nos listes kp_l et kp_r sont parfaitement alignées, 
+            # on relie simplement la position i à la position i
+            debug_matches.append(cv.DMatch(i, i, 0))
+
+        img_stereo = cv.drawMatches(
+            self.previous_frame_.clean_left_img_, kp_l,
+            self.current_frame_.clean_left_img_, kp_r,
+            debug_matches, None, 
+            flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+            matchColor=(0, 255, 0)
+        )
+            
+        img_stereo_resized = cv.resize(img_stereo, (0, 0), fx=0.5, fy=0.5)
+        cv.imshow("DEBUG : Temporal Tracking", img_stereo_resized)
+        
+        print(f"⏸PAUSE DEBUG : {len(good_matches_new_idx)} matchs temporels trouvés. Appuie sur une touche...")
+        cv.waitKey(0)
+
+        '''
+
         if len(matched_3d_pts) >= 15:
             pts3d_arr = np.float32(matched_3d_pts)
             pts2d_arr = np.float32(matched_2d_pts)
@@ -255,7 +293,16 @@ class Frontend():
                 self.num_frames_since_last_kf_ += 1
 
 
-                for original_match_idx in inliers.flatten():
+                # Debug
+                '''
+                kp_l = []
+                kp_r = []
+                debug_matches = []
+
+                # inliers est un tableau 2D (ex: [[0], [3], [4]...]), on l'aplatit
+                inliers_flat = inliers.flatten()
+
+                for draw_idx, original_match_idx in enumerate(inliers_flat):
                     # On récupère les indices originaux validés par RANSAC
                     old_idx = good_matches_old_idx[original_match_idx]
                     new_idx = good_matches_new_idx[original_match_idx]
@@ -264,6 +311,38 @@ class Frontend():
                     new_feature = self.current_frame_.features_left_[new_idx]
 
                     map_point = old_feature.map_point_
+                    new_feature.map_point_ = map_point
+                    map_point.add_observation(new_feature)
+
+                    # On prépare l'affichage
+                    kp_l.append(old_feature.position_)
+                    kp_r.append(new_feature.position_)
+                    debug_matches.append(cv.DMatch(draw_idx, draw_idx, 0))
+
+                # Dessin
+                img_inliers = cv.drawMatches(
+                    self.previous_frame_.clean_left_img_, kp_l,
+                    self.current_frame_.clean_left_img_, kp_r,
+                    debug_matches, None, 
+                    flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+                    matchColor=(0, 255, 0)
+                )
+                    
+                img_inliers_resized = cv.resize(img_inliers, (0, 0), fx=0.5, fy=0.5)
+                cv.imshow("DEBUG : Inliers RANSAC", img_inliers_resized)
+                
+                print(f"⏸️ PAUSE DEBUG : {len(inliers_flat)} INLIERS validés. Appuie sur une touche...")
+                cv.waitKey(0)
+                '''
+                
+                # On lie les nouvelles features aux anciens pts 3D
+                for i in inliers.flatten():
+                    idx_old = good_matches_old_idx[i]
+                    idx_new = good_matches_new_idx[i]
+                    
+                    map_point = previous_feature3D[idx_old].map_point_
+                    new_feature = self.current_frame_.features_left_[idx_new]
+                    
                     new_feature.map_point_ = map_point
                     map_point.add_observation(new_feature)
 
@@ -332,7 +411,7 @@ class Frontend():
         if self.backend_ is not None:
 
             optim_thread = threading.Thread(target=self.backend_.update_map)
-            optim_thread.daemon = True # Le thread s'arrêtera si on ferme le programme
+            optim_thread.daemon = True 
             optim_thread.start()
 
   
@@ -342,7 +421,6 @@ class Frontend():
         features_l = self.current_frame_.features_left_
         features_r = self.current_frame_.features_right_
         
-        # On s'assure que les bins sont calculés pour la frame courante
         self.current_frame_.compute_bins() 
 
         # On récupère les bins globaux déjà calculés
@@ -354,7 +432,6 @@ class Frontend():
 
         for bin_idx, idx_l_all in bins_l.items():
             
-            # --- LE FILTRE CRUCIAL ---
             # Dans ce bin, on ne garde QUE les indices des features qui n'ont PAS de map_point
             idx_l_research = [i for i in idx_l_all if features_l[i].map_point_ is None]
             
@@ -370,9 +447,8 @@ class Frontend():
             if len(idx_r_research) < 2:
                 continue
 
-            # On utilise maintenant idx_l_research (les orphelins) pour le desc_l
-            desc_l = np.array([features_l[i].descriptor_ for i in idx_l_research], dtype=np.uint8)
-            desc_r = np.array([features_r[i].descriptor_ for i in idx_r_research], dtype=np.uint8)
+            desc_l = np.array([features_l[i].descriptor_ for i in idx_l_research], dtype=np.float32)
+            desc_r = np.array([features_r[i].descriptor_ for i in idx_r_research], dtype=np.float32)
 
             knnMatches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 

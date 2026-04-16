@@ -21,7 +21,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     print(IMAGE_SIZE)
 
-    with open('SLAM/calibration/param/stereo_params_complets.pkl', 'rb') as f:
+    with open('SLAM/calibration/param/stereo_a_lenvers.pkl', 'rb') as f:
         params = pickle.load(f)
 
     # Preprocessing
@@ -51,7 +51,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
     
     bins_l = {}
     bins_r = {}
-    BIN_SIZE = 5
+    BIN_SIZE = 30
     
 
     for i, kp in enumerate(kpts_l) :
@@ -183,7 +183,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     
     # Visualisation
-    '''
+    
     vis_g = cv.cvtColor(img_l_clean, cv.COLOR_BGR2RGB)
     vis_d = cv.cvtColor(img_r_clean, cv.COLOR_BGR2RGB)
 
@@ -202,7 +202,7 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
-    '''
+    
     
 
     # On filtre les points aberrants trop loin (ex: > 15 mètres)
@@ -213,14 +213,14 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
     pts_g_clean = pts_g[mask]
     desc_l_clean = desc_l[index_g_clean]
 
-    '''
+    
     ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
     ax.set_xlabel('X (Largeur)')
     ax.set_ylabel('Z (Profondeur)')
     ax.set_zlabel('Y (Hauteur)')
     plt.title("Aperçu rapide du nuage de points")
     plt.show()
-    '''
+    
     
 
     return p3d, pts_g_clean, desc_l_clean 
@@ -228,8 +228,8 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
 if __name__ == '__main__' :
     parser = argparse.ArgumentParser(description='Pipeline Stéréo 3D avec AKAZE.')
-    parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/set_3_caillou/frame_0002_l.jpg')
-    parser.add_argument('--droite', help='Chemin image droite', default='SLAM/images_test/set_3_caillou/frame_0002_r.jpg')
+    parser.add_argument('--gauche', help='Chemin image gauche', default='SLAM/images_test/image_caillou/frame_0002_l.jpg')
+    parser.add_argument('--droite', help='Chemin image droite', default='SLAM/images_test/image_caillou/frame_0002_r.jpg')
     parser.add_argument("--akaze", type=float, default=0.001, help="Seuil de détection AKAZE")
     parser.add_argument('--lowe', type=float, default=0.8, help='Ratio de Lowe')
     parser.add_argument('--ytol', type=float, default=10.0, help='Tolérance horizontale (pixels)')
