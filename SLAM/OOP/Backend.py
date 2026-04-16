@@ -5,7 +5,7 @@ import cv2 as cv
 import Map
 
 class Backend:
-    def __init__(self, map : Map, params_stereo):
+    def __init__(self, params_stereo, map : Map):
         self.map_ = map
         self.params_stero_ = params_stereo
         

@@ -4,9 +4,10 @@ import time
 import os
 import time
 
-from Frame import Frame
 from Map import Map
-from Frontend import Frontend
+from Frame_without_rectify import Frame
+from Map import Map
+from Frontend_without_rectify import Frontend
 
 # ---- Choose backend: "g2o" or "gtsam" ----
 BACKEND_TYPE = "g2o"
@@ -15,10 +16,7 @@ if BACKEND_TYPE == "gtsam":
     from Backend2 import Backend
 else:
     from Backend import Backend
-from Frame_without_rectify import Frame
-from Map import Map
-from Frontend_without_rectify import Frontend
-from Backend import Backend
+
 
 def save_point_cloud_ply(filename, xyz_points):
     """
@@ -47,17 +45,14 @@ def main():
     slam_map = Map()
     slam_map.start_dash_server()
 
-    if BACKEND_TYPE == "gtsam":
-        backend = Backend(params_stereo=Frame.params, slam_map=slam_map)
-    else:
-        backend = Backend(map=slam_map, params_stereo=Frame.params)
+    backend = Backend(params_stereo=Frame.params, map= slam_map)
 
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
     start_frame = 20
-    end_frame = 250
+    end_frame = 150
 
-    for i in range(start_frame, end_frame):
+    for i in range(start_frame, end_frame-1):
         t_start = time.time()
 
         path_l = f'SLAM/images_test/set_4_caillou/frame_{i:04d}_l.jpg'
@@ -80,7 +75,7 @@ def main():
 
     # Visualisation finale optimisée
     time.sleep(2.0)
-
+    slam_map.build_mesh()
     points_3d = slam_map.get_all_map_points()
 
     if not points_3d:

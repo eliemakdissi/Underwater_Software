@@ -8,7 +8,7 @@ X = symbol_shorthand.X
 
 class Backend:
 
-    def __init__(self, params_stereo, slam_map):
+    def __init__(self, params_stereo, slam_map : Map):
         self.map_ = slam_map
 
         # Calibration from the rectified projection matrix P1

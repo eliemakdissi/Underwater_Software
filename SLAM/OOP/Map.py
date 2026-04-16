@@ -1,5 +1,7 @@
 # Implementation of the Map class
+import open3d as o3d
 import threading
+import time
 import numpy as np
 import plotly.graph_objects as go
 from dash import Dash, dcc, html
@@ -171,3 +173,36 @@ class Map:
         )
 
         return fig
+    def build_mesh(self, method="d"):
+        # Convert all map points to an Open3D PointCloud object.
+        all_points = self.get_all_map_points()
+
+        pts = np.array([mp.pos_ for mp in all_points if not mp.is_outlier_])
+        if len(pts) == 0:
+            return o3d.geometry.PointCloud()
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pts)
+        pcd.estimate_normals()
+        pcd.orient_normals_consistent_tangent_plane(k=10)
+        start= time.time()
+        if method== "pointball":
+            radii = [0.005, 0.01, 0.02, 0.04,0.1]
+            rec_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd, radii)
+        elif method=="alpha":
+            tetra_mesh, pt_map = o3d.geometry.TetraMesh.create_from_point_cloud(pcd)
+            for alpha in np.logspace(np.log10(0.5), np.log10(0.01), num=4):
+                print(f"alpha={alpha:.3f}")
+                rec_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(
+                    pcd, alpha, tetra_mesh, pt_map)
+                rec_mesh.compute_vertex_normals()
+        else:
+            with o3d.utility.VerbosityContextManager(
+                    o3d.utility.VerbosityLevel.Debug) as cm:
+                rec_mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+                    pcd, depth=3)
+        end = time.time()
+        print("temps de meshing : ", end-start)
+        o3d.visualization.draw_geometries([pcd, rec_mesh])
+        return pcd, rec_mesh
+        
