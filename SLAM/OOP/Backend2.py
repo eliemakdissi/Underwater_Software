@@ -1,6 +1,7 @@
 import numpy as np
 import gtsam
 from gtsam import symbol_shorthand, Pose3, Rot3, Point3
+import time
 
 L = symbol_shorthand.L
 X = symbol_shorthand.X
@@ -74,6 +75,7 @@ class Backend:
 
     def process_new_keyframes(self):
         """Incrementally add new keyframes to the factor graph and optimise."""
+        start = time.time()
         all_kfs = self.map_.get_all_keyframes()
         new_kfs = [kf for kf in all_kfs if kf.id_ not in self.processed_keyframe_ids]
         if not new_kfs:
@@ -146,6 +148,8 @@ class Backend:
                   f"{len(self.initialized_landmarks)} landmarks")
         except Exception as e:
             print(f"[Backend] Optimisation error: {e}")
+        end = time.time()
+        print("Temps d'optimisation backend : ",end-start)
 
     def _marginalize_old_landmarks(self):
         """Remove old landmarks from iSAM2 to bound computation."""

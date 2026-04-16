@@ -199,10 +199,13 @@ class Map:
         else:
             with o3d.utility.VerbosityContextManager(
                     o3d.utility.VerbosityLevel.Debug) as cm:
-                rec_mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-                    pcd, depth=3)
+                for alpha in range(10, 100, 20):
+                    print(f"alpha={alpha:.3f}")
+                    rec_mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+                        pcd, depth=alpha)
+                    rec_mesh.compute_vertex_normals()
         end = time.time()
         print("temps de meshing : ", end-start)
-        o3d.visualization.draw_geometries([pcd, rec_mesh])
+        o3d.visualization.draw_geometries([pcd, rec_mesh],mesh_show_back_face=True)
         return pcd, rec_mesh
         

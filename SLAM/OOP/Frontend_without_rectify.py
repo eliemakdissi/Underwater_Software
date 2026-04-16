@@ -167,12 +167,10 @@ class Frontend():
             self.status_ = FrontendStatus.LOST
             print("Tracking LOST : Pas assez de points 3D dans la frame précédente.")
             return False
-        
+        for i in range(len(self.current_frame_.features_left_)):
+            print(np.shape(self.current_frame_.features_left_[i]))
         previous_desc = np.array(previous_desc, dtype=np.float32)
-
-        valid_features = [f for f in self.current_frame_.features_left_
-                          if f.descriptor_ is not None and np.ndim(f.descriptor_) == 1]
-        new_desc = np.array([f.descriptor_ for f in valid_features], dtype=np.float32)
+        new_desc = np.array([f.descriptor_ for f in self.current_frame_.features_left_], dtype=np.float32)
 
         knn_matches = self.matcher.knnMatch(previous_desc, new_desc, k=2)
 
@@ -186,7 +184,7 @@ class Frontend():
             if len(match) == 2 and match[0].distance < match[1].distance * LOWE:
                 m = match[0]
                 old_feature = previous_feature3D[m.queryIdx]
-                new_feature = valid_features[m.trainIdx]
+                new_feature = self.current_frame_.features_left_[m.trainIdx]
 
                 matched_3d_pts.append(old_feature.map_point_.pos_)
                 matched_2d_pts.append(new_feature.position_.pt)
@@ -222,7 +220,7 @@ class Frontend():
                     idx_new = good_matches_new_idx[i]
                     
                     map_point = previous_feature3D[idx_old].map_point_
-                    new_feature = valid_features[idx_new]
+                    new_feature = self.current_frame_.features_left_[idx_new]
                     
                     new_feature.map_point_ = map_point
                     map_point.add_observation(new_feature)
@@ -288,6 +286,7 @@ class Frontend():
 
         if not idx_l_orphelins or len(features_r) == 0:
             return
+        print(idx_l_orphelins)
         desc_l = np.array([features_l[i].descriptor_ for i in idx_l_orphelins], dtype=np.float32)
         desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
 

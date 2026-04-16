@@ -87,14 +87,20 @@ class Frame:
         key_l, desc_l = Frame.sift.detectAndCompute(self.clean_left_img_, None)
         key_r, desc_r = Frame.sift.detectAndCompute(self.clean_right_img_, None)
 
-        for i in range(len(key_l)):
-            new_feature = Feature(frame=self, keypoint=key_l[i], descriptor=desc_l[i])
-            new_feature.is_on_left_image_= True
-            self.features_left_.append(new_feature)
-        for i in range(len(key_r)):
-            new_feature = Feature(frame=self, keypoint=key_r[i], descriptor= desc_r[i])
-            new_feature.is_on_left_image_= False
-            self.features_right_.append(new_feature)
+        if desc_l is not None:
+            desc_l = np.atleast_2d(desc_l)
+            for i in range(len(key_l)):
+                new_feature = Feature(frame=self, keypoint=key_l[i], descriptor=desc_l[i].copy())
+                new_feature.is_on_left_image_= True
+                self.features_left_.append(new_feature)
+
+        if desc_r is not None:
+            desc_r = np.atleast_2d(desc_r)
+            for i in range(len(key_r)):
+                new_feature = Feature(frame=self, keypoint=key_r[i], descriptor=desc_r[i].copy())
+                new_feature.is_on_left_image_= False
+                self.features_right_.append(new_feature)
+
         return True
 
     def compute_bins(self):
