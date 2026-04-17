@@ -173,7 +173,7 @@ class Map:
         )
 
         return fig
-    def build_mesh(self, method="d"):
+    def build_mesh(self, method="a"):
         # Convert all map points to an Open3D PointCloud object.
         all_points = self.get_all_map_points()
 
@@ -196,14 +196,16 @@ class Map:
                 rec_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(
                     pcd, alpha, tetra_mesh, pt_map)
                 rec_mesh.compute_vertex_normals()
+                o3d.visualization.draw_geometries([pcd, rec_mesh],mesh_show_back_face=True)
         else:
             with o3d.utility.VerbosityContextManager(
                     o3d.utility.VerbosityLevel.Debug) as cm:
-                for alpha in range(10, 100, 20):
+                for alpha in range(10, 50, 20):
                     print(f"alpha={alpha:.3f}")
                     rec_mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
                         pcd, depth=alpha)
                     rec_mesh.compute_vertex_normals()
+                    o3d.visualization.draw_geometries([pcd, rec_mesh],mesh_show_back_face=True)
         end = time.time()
         print("temps de meshing : ", end-start)
         o3d.visualization.draw_geometries([pcd, rec_mesh],mesh_show_back_face=True)
