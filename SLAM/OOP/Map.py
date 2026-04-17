@@ -7,8 +7,10 @@ import plotly.graph_objects as go
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
 
+import Params
+
 class Map:
-    
+
     def __init__(self):
 
         self.landmarks_ = {}
@@ -16,7 +18,6 @@ class Map:
         self.keyframes_ = {}
         self.active_keyframes_ = {}
 
-        self.num_active_keyframes_ = 7
         self.current_frame_ = None
 
         self.data_mutex_ = threading.Lock()
@@ -28,7 +29,7 @@ class Map:
             self.keyframes_[frame.id_] = frame
             self.active_keyframes_[frame.id_] = frame
 
-        if len(self.active_keyframes_) > self.num_active_keyframes_:
+        if len(self.active_keyframes_) > Params.get('num_active_keyframes'):
             self.remove_old_keyframe()
 
     def insert_map_point(self, map_point):
@@ -70,10 +71,10 @@ class Map:
 
     def remove_old_keyframe(self):
 
-        if len(self.active_keyframes_) <= self.num_active_keyframes_:
-            return
-        min_id = min(self.active_keyframes_.keys())
-        self.active_keyframes_.pop(min_id, None)
+        limit = Params.get('num_active_keyframes')
+        while len(self.active_keyframes_) > limit:
+            min_id = min(self.active_keyframes_.keys())
+            self.active_keyframes_.pop(min_id, None)
 
     # ------------------------------------------------------------------
     # Dash live 3-D plot

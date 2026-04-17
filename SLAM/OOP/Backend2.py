@@ -3,6 +3,8 @@ import gtsam
 from gtsam import symbol_shorthand, Pose3, Rot3, Point3
 import time
 
+import Params
+
 L = symbol_shorthand.L
 X = symbol_shorthand.X
 
@@ -48,7 +50,6 @@ class Backend:
         self.initialized_landmarks = set()
         self.marginalized_landmarks = set()
         self.landmark_last_seen = {}  # landmark_id -> keyframe id when last observed
-        self.max_landmarks = 10000
         self.result = None
 
 
@@ -153,10 +154,11 @@ class Backend:
 
     def _marginalize_old_landmarks(self):
         """Remove old landmarks from iSAM2 to bound computation."""
-        if len(self.initialized_landmarks) <= self.max_landmarks:
+        max_landmarks = Params.get('max_landmarks')
+        if len(self.initialized_landmarks) <= max_landmarks:
             return
 
-        n_to_remove = len(self.initialized_landmarks) - self.max_landmarks
+        n_to_remove = len(self.initialized_landmarks) - max_landmarks
 
         # Marginalize the least recently observed landmarks first
         sorted_by_age = sorted(

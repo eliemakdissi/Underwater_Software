@@ -4,6 +4,7 @@ import cv2 as cv
 import numpy as np
 import threading
 import pickle
+import Params
 from Feature import Feature
 
 class Frame:
@@ -16,12 +17,29 @@ class Frame:
     mapl_x, mapl_y = cv.initUndistortRectifyMap(params['mtx1'], params['dist1'], params['R1'], params['P1'], (1920,1080), cv.CV_32FC1)
     mapr_x, mapr_y = cv.initUndistortRectifyMap(params['mtx2'], params['dist2'], params['R2'], params['P2'], (1920,1080), cv.CV_32FC1)
     '''
-    clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-
-    # Feature detection
-    sift = cv.SIFT_create(contrastThreshold=0.01)
     orb = cv.ORB_create(nfeatures=10000, scaleFactor=1.2, nlevels=8)
     akaze = cv.AKAZE_create(threshold = 0.001, diffusivity = cv.KAZE_DIFF_CHARBONNIER)
+
+    _sift = None
+    _sift_version = -1
+    _clahe = None
+    _clahe_version = -1
+
+    @classmethod
+    def get_sift(cls):
+        v = Params.version('sift_contrast_threshold')
+        if cls._sift is None or cls._sift_version != v:
+            cls._sift = cv.SIFT_create(contrastThreshold=Params.get('sift_contrast_threshold'))
+            cls._sift_version = v
+        return cls._sift
+
+    @classmethod
+    def get_clahe(cls):
+        v = Params.version('clahe_clip_limit')
+        if cls._clahe is None or cls._clahe_version != v:
+            cls._clahe = cv.createCLAHE(clipLimit=Params.get('clahe_clip_limit'), tileGridSize=(8, 8))
+            cls._clahe_version = v
+        return cls._clahe
 
     _next_id = 0
 
@@ -75,8 +93,9 @@ class Frame:
         img_r_undist = cv.undistort(self.right_img_, Frame.params['mtx2'], Frame.params['dist2'], Frame.params['mtx2'])
         
 
-        self.clean_left_img_ = Frame.clahe.apply(img_l_undist[:,:,1])
-        self.clean_right_img_ = Frame.clahe.apply(img_r_undist[:,:,1])
+        clahe = Frame.get_clahe()
+        self.clean_left_img_ = clahe.apply(img_l_undist[:,:,1])
+        self.clean_right_img_ = clahe.apply(img_r_undist[:,:,1])
 
         self.clean_left_img_ = img_l_undist[:,:,1]
         self.clean_right_img_ = img_r_undist[:,:,1]
@@ -84,8 +103,9 @@ class Frame:
         return True
     
     def extract_features(self):
-        key_l, desc_l = Frame.sift.detectAndCompute(self.clean_left_img_, None)
-        key_r, desc_r = Frame.sift.detectAndCompute(self.clean_right_img_, None)
+        sift = Frame.get_sift()
+        key_l, desc_l = sift.detectAndCompute(self.clean_left_img_, None)
+        key_r, desc_r = sift.detectAndCompute(self.clean_right_img_, None)
 
         if desc_l is not None:
             desc_l = np.atleast_2d(desc_l)

@@ -8,6 +8,7 @@ from Map import Map
 from Frame_without_rectify import Frame
 from Map import Map
 from Frontend_without_rectify import Frontend
+from ParamServer import start_param_server
 
 # ---- Choose backend: "g2o" or "gtsam" ----
 BACKEND_TYPE = "g2o"
@@ -44,6 +45,7 @@ def main():
 
     slam_map = Map()
     slam_map.start_dash_server()
+    start_param_server()
 
     backend = Backend(params_stereo=Frame.params, map= slam_map)
 

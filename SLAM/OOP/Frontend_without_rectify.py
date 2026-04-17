@@ -3,6 +3,7 @@ import cv2 as cv
 import numpy as np
 import time
 
+import Params
 from Frame import Frame
 from Map import Map
 from MapPoint import MapPoint
@@ -72,13 +73,13 @@ class Frontend():
         t3 = time.time()
         print(f'Nb match {len(knn_matches)}')
 
-        LOWE = 0.80 
+        lowe = Params.get('lowe_ratio')
         pts_l_brut = []
         pts_r_brut = []
         idx_l_bruts_temp = []
 
         for m in knn_matches:
-            if len(m) == 2 and m[0].distance < m[1].distance * LOWE:
+            if len(m) == 2 and m[0].distance < m[1].distance * lowe:
                 idx_l = m[0].queryIdx
                 idx_r = m[0].trainIdx
 
@@ -99,9 +100,9 @@ class Frontend():
         K2 = self.params_stero_['mtx2']
 
         E, mask = cv.findEssentialMat(
-            pts_l_brut, pts_r_brut, 
-            cameraMatrix=K1, 
-            method=cv.RANSAC, prob=0.999, threshold=3.0 
+            pts_l_brut, pts_r_brut,
+            cameraMatrix=K1,
+            method=cv.RANSAC, prob=0.999, threshold=Params.get('essential_ransac_threshold')
         )
         print(f'Nb match {len(pts_l_brut)} post Lowe')
         if mask is None:
@@ -129,9 +130,11 @@ class Frontend():
         points4Dlocal = cv.triangulatePoints(P1_unrect, P2_unrect, pts_l_good.T, pts_r_good.T)
         points3Dlocal = (points4Dlocal[:3, :] / points4Dlocal[3, :]).T
         t6 =time.time()
+        depth_min = Params.get('depth_min')
+        depth_max = Params.get('depth_max')
         points_valides = 0
         for i, pt_local in enumerate(points3Dlocal):
-            if 0.1 < pt_local[2] < 15.0:
+            if depth_min < pt_local[2] < depth_max:
                 idx_l = idx_l_bruts[i]
                 feature_left = features_l[idx_l]
                 # Filtre d'outliers
@@ -176,8 +179,8 @@ class Frontend():
             self.status_ = FrontendStatus.LOST
             print("Tracking LOST : Pas assez de points 3D dans la frame précédente.")
             return False
-        for i in range(len(self.current_frame_.features_left_)):
-            print(np.shape(self.current_frame_.features_left_[i]))
+        # for i in range(len(self.current_frame_.features_left_)):
+        #     print(np.shape(self.current_frame_.features_left_[i]))
         previous_desc = np.array(previous_desc, dtype=np.float32)
         new_desc = np.array([f.descriptor_ for f in self.current_frame_.features_left_], dtype=np.float32)
 
@@ -188,9 +191,9 @@ class Frontend():
         good_matches_new_idx = []
         good_matches_old_idx = []
 
-        LOWE = 0.80
+        lowe = Params.get('lowe_ratio')
         for match in knn_matches:
-            if len(match) == 2 and match[0].distance < match[1].distance * LOWE:
+            if len(match) == 2 and match[0].distance < match[1].distance * lowe:
                 m = match[0]
                 old_feature = previous_feature3D[m.queryIdx]
                 new_feature = self.current_frame_.features_left_[m.trainIdx]
@@ -209,10 +212,10 @@ class Frontend():
             
             # Image déjà propre -> distCoeffs = None
             success, rvec_new, tvec_new, inliers = cv.solvePnPRansac(
-                pts3d_arr, pts2d_arr, K1, None, 
+                pts3d_arr, pts2d_arr, K1, None,
                 flags=cv.SOLVEPNP_EPNP,
                 iterationsCount=100,
-                reprojectionError=5.0 
+                reprojectionError=Params.get('pnp_reprojection_error')
             )
             
             if success and inliers is not None and len(inliers) >= 10:
@@ -258,20 +261,20 @@ class Frontend():
     def need_new_keyframe(self, num_inliers, num_previous_pts):
         #ratio_survie = num_inliers / max(1, num_previous_pts)
 
-        if num_inliers < 50: 
+        if num_inliers < Params.get('kf_min_inliers'):
             return True
-        
-        if self.num_frames_since_last_kf_ > 15 :
+
+        if self.num_frames_since_last_kf_ > Params.get('kf_max_frames'):
             return True
-        
-        last_kf = self.map_.get_active_keyframes()[-1] 
+
+        last_kf = self.map_.get_active_keyframes()[-1]
         translation = np.linalg.norm(self.current_frame_.pose_[:3, 3] - last_kf.pose_[:3, 3])
         R_rel = self.current_frame_.pose_[:3, :3] @ last_kf.pose_[:3, :3].T
         angle = np.arccos(np.clip((np.trace(R_rel) - 1) / 2, -1, 1)) * 180 / np.pi
-        
-        if translation > 0.15 or angle > 8.0: 
+
+        if translation > Params.get('kf_translation') or angle > Params.get('kf_angle_deg'):
             return True
-        
+
         return False
     
     def insert_keyframe(self):
@@ -295,19 +298,18 @@ class Frontend():
 
         if not idx_l_orphelins or len(features_r) == 0:
             return
-        print(idx_l_orphelins)
         desc_l = np.array([features_l[i].descriptor_ for i in idx_l_orphelins], dtype=np.float32)
         desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
 
         knn_matches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
-        LOWE = 0.80
+        lowe = Params.get('lowe_ratio')
         pts_l_brut = []
         pts_r_brut = []
         idx_l_bruts_temp = []
 
         for m in knn_matches:
-            if len(m) == 2 and m[0].distance < m[1].distance * LOWE:
+            if len(m) == 2 and m[0].distance < m[1].distance * lowe:
                 idx_l_local = m[0].queryIdx
                 idx_l_global = idx_l_orphelins[idx_l_local]
                 idx_r = m[0].trainIdx
@@ -326,9 +328,9 @@ class Frontend():
         K2 = self.params_stero_['mtx2']
 
         E, mask = cv.findEssentialMat(
-            pts_l_brut, pts_r_brut, 
-            cameraMatrix=K1, 
-            method=cv.RANSAC, prob=0.999, threshold=3.0
+            pts_l_brut, pts_r_brut,
+            cameraMatrix=K1,
+            method=cv.RANSAC, prob=0.999, threshold=Params.get('essential_ransac_threshold')
         )
 
         if mask is None:
@@ -349,10 +351,12 @@ class Frontend():
         points3Dlocal = (points4Dlocal[:3, :] / points4Dlocal[3, :]).T
 
         T_wc = np.linalg.inv(self.current_frame_.pose_)
-        
+
+        depth_min = Params.get('depth_min')
+        depth_max = Params.get('depth_max')
         points_insere = 0
         for i, pt_local in enumerate(points3Dlocal):
-            if 0.1 < pt_local[2] < 15.0:
+            if depth_min < pt_local[2] < depth_max:
                 pt_local_homo = np.append(pt_local, 1.0)
                 pt_global = (T_wc @ pt_local_homo)[:3]
 

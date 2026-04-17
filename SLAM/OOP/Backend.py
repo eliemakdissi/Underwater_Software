@@ -3,6 +3,7 @@ import g2opy as g2o
 import cv2 as cv
 
 import Map
+import Params
 
 class Backend:
     def __init__(self, params_stereo, map : Map):
@@ -57,7 +58,7 @@ class Backend:
             optimizer.add_vertex(v_p)
 
         # Edges/observations
-        chi2_th = 5.991
+        chi2_th = Params.get('chi2_threshold')
         edges_and_features = []
         valid_kf_ids = [kf.id_ for kf in active_keyframes]
 
