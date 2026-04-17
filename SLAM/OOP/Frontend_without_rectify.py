@@ -184,6 +184,9 @@ class Frontend():
         # for i in range(len(self.current_frame_.features_left_)):
         #     print(np.shape(self.current_frame_.features_left_[i]))
         previous_desc = np.array(previous_desc, dtype=np.float32)
+        for f in self.current_frame_.features_left_:
+            if np.shape(f.descriptor_) != (128,):
+                print(f.descriptor_)
         new_desc = np.array([f.descriptor_ for f in self.current_frame_.features_left_], dtype=np.float32)
 
         knn_matches = self.matcher.knnMatch(previous_desc, new_desc, k=2)
