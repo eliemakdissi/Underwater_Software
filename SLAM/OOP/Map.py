@@ -173,7 +173,7 @@ class Map:
         )
 
         return fig
-    def build_mesh(self, method="a"):
+    def build_mesh(self, method="alpha"):
         # Convert all map points to an Open3D PointCloud object.
         all_points = self.get_all_map_points()
 

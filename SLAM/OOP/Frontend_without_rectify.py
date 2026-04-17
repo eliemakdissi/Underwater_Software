@@ -30,6 +30,10 @@ class Frontend():
         
         self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
 
+        # Filtre d'outliers
+        self.minimal_number_neigbors = 15
+        self.radius = 0.1
+
     def add_frame(self, frame: Frame):
         self.current_frame_ = frame
         success = False 
@@ -130,7 +134,12 @@ class Frontend():
             if 0.1 < pt_local[2] < 15.0:
                 idx_l = idx_l_bruts[i]
                 feature_left = features_l[idx_l]
-
+                # Filtre d'outliers
+                # number_neighbors = 0
+                # for _,autre_pt in enumerate(points3Dlocal):
+                #     if np.linalg.norm(autre_pt-pt_local) < self.radius:
+                #         number_neighbors += 1
+                # if number_neighbors >= self.minimal_number_neigbors:
                 new_mp = MapPoint.create_new_mappoint(position=pt_local)
                 feature_left.map_point_ = new_mp
                 new_mp.add_observation(feature_left)
