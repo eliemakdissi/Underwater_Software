@@ -87,11 +87,11 @@ class Frame:
         Frame._next_id += 1
         return new_frame
     
-    def preprocess(self): 
+    def preprocess(self):
 
         img_l_undist = cv.undistort(self.left_img_, Frame.params['mtx1'], Frame.params['dist1'], Frame.params['mtx1'])
         img_r_undist = cv.undistort(self.right_img_, Frame.params['mtx2'], Frame.params['dist2'], Frame.params['mtx2'])
-        
+
 
         clahe = Frame.get_clahe()
         self.clean_left_img_ = clahe.apply(img_l_undist[:,:,1])
@@ -99,6 +99,9 @@ class Frame:
 
         self.clean_left_img_ = img_l_undist[:,:,1]
         self.clean_right_img_ = img_r_undist[:,:,1]
+
+        self.color_left_img_ = img_l_undist
+        self.color_right_img_ = img_r_undist
 
         return True
     
@@ -111,17 +114,28 @@ class Frame:
             desc_l = np.atleast_2d(desc_l)
             for i in range(len(key_l)):
                 new_feature = Feature(frame=self, keypoint=key_l[i], descriptor=desc_l[i].copy())
-                new_feature.is_on_left_image_= True
+                new_feature.is_on_left_image_ = True
+                new_feature.color_ = Frame._sample_color(self.color_left_img_, key_l[i].pt)
                 self.features_left_.append(new_feature)
 
         if desc_r is not None:
             desc_r = np.atleast_2d(desc_r)
             for i in range(len(key_r)):
                 new_feature = Feature(frame=self, keypoint=key_r[i], descriptor=desc_r[i].copy())
-                new_feature.is_on_left_image_= False
+                new_feature.is_on_left_image_ = False
+                new_feature.color_ = Frame._sample_color(self.color_right_img_, key_r[i].pt)
                 self.features_right_.append(new_feature)
 
         return True
+
+    @staticmethod
+    def _sample_color(bgr_img, pt):
+        # cv.imread gives BGR; return (R, G, B) ints for plotting convenience.
+        h, w = bgr_img.shape[:2]
+        x = min(max(int(round(pt[0])), 0), w - 1)
+        y = min(max(int(round(pt[1])), 0), h - 1)
+        b, g, r = bgr_img[y, x]
+        return (int(r), int(g), int(b))
 
     def compute_bins(self):
 

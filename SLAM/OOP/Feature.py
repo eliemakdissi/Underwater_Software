@@ -15,7 +15,10 @@ class Feature:
         self.descriptor_ = descriptor
         
         # point 3d correspondant au feature, weakref aussi si on veut supprimer le point
-        self.map_point_ = None 
-        self.is_outlier_ = False          
-        self.is_on_left_image_ = True     
+        self.map_point_ = None
+        self.is_outlier_ = False
+        self.is_on_left_image_ = True
+
+        # RGB color of the pixel under the keypoint when it was first seen
+        self.color_ = None
 

@@ -122,15 +122,20 @@ class Map:
 
         # --- Points trace (always present, empty if no data) ---
         pts_x, pts_y, pts_z = [], [], []
+        pts_colors = []
         n_pts_filtered = 0
 
         if all_points:
-            pts = np.array([mp.pos_ for mp in all_points if not mp.is_outlier_])
-            if len(pts) > 0:
+            valid_mps = [mp for mp in all_points if not mp.is_outlier_]
+            if valid_mps:
+                pts = np.array([mp.pos_ for mp in valid_mps])
+                cols = np.array([mp.color_ for mp in valid_mps], dtype=np.int32)
                 mask = (pts[:, 2] > 0.05) & (pts[:, 2] < 20.0)
                 pts = pts[mask]
+                cols = cols[mask]
                 if len(pts) > 0:
                     pts_x, pts_y, pts_z = pts[:, 0], pts[:, 2], pts[:, 1]
+                    pts_colors = [f'rgb({r},{g},{b})' for r, g, b in cols]
                     n_pts_filtered = len(pts)
 
         n_kf = len(keyframes) if keyframes else 0
@@ -154,7 +159,7 @@ class Map:
             go.Scatter3d(
                 x=pts_x, y=pts_y, z=pts_z,
                 mode='markers',
-                marker=dict(size=1, color='red', opacity=0.3),
+                marker=dict(size=2, color=pts_colors if pts_colors else 'red', opacity=0.9),
                 name=f'Points ({n_pts_filtered})'
             ),
         ])

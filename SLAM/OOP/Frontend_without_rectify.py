@@ -144,9 +144,11 @@ class Frontend():
                 #         number_neighbors += 1
                 # if number_neighbors >= self.minimal_number_neigbors:
                 new_mp = MapPoint.create_new_mappoint(position=pt_local)
+                if feature_left.color_ is not None:
+                    new_mp.color_ = feature_left.color_
                 feature_left.map_point_ = new_mp
                 new_mp.add_observation(feature_left)
-                
+
                 self.map_.insert_map_point(new_mp)
                 points_valides += 1
 
@@ -362,10 +364,12 @@ class Frontend():
 
                 new_mp = MapPoint.create_new_mappoint(position=pt_global)
                 feat_l = features_l[idx_l_bruts[i]]
-                
+                if feat_l.color_ is not None:
+                    new_mp.color_ = feat_l.color_
+
                 feat_l.map_point_ = new_mp
                 new_mp.add_observation(feat_l)
-                
+
                 self.map_.insert_map_point(new_mp)
                 points_insere += 1
                 

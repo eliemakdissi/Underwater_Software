@@ -10,7 +10,10 @@ class MapPoint:
         self.id_ = id if id is not None else MapPoint._next_id
         self.pos_ = position if position is not None else np.zeros(3)
         self._data_mutex = threading.Lock()
-        
+
+        # RGB color (0-255 ints) taken from the feature that first observed it
+        self.color_ = (200, 200, 200)
+
         # État du point
         self.is_outlier_ = False
         self.observed_times_ = 0  # Nombre de fois que ce point a été vu
