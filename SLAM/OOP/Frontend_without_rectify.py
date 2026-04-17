@@ -32,7 +32,7 @@ class Frontend():
         self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
 
         # Filtre d'outliers
-        self.minimal_number_neigbors = 15
+        self.necessary_number_neigbors = 15
         self.radius = 0.1
 
     def add_frame(self, frame: Frame):
@@ -133,16 +133,17 @@ class Frontend():
         depth_min = Params.get('depth_min')
         depth_max = Params.get('depth_max')
         points_valides = 0
+        distance_neighbors = []
         for i, pt_local in enumerate(points3Dlocal):
             if depth_min < pt_local[2] < depth_max:
                 idx_l = idx_l_bruts[i]
                 feature_left = features_l[idx_l]
                 # Filtre d'outliers
-                # number_neighbors = 0
-                # for _,autre_pt in enumerate(points3Dlocal):
-                #     if np.linalg.norm(autre_pt-pt_local) < self.radius:
-                #         number_neighbors += 1
-                # if number_neighbors >= self.minimal_number_neigbors:
+                distance_neighbors.append([])
+                for _,other_pt in enumerate(points3Dlocal):
+                    distance_neighbors[i].append(np.linalg.norm(pt_local -other_pt))
+                distance_neighbors[i].sort()
+                nth_distance = distance_neighbors[i][self.necessary_number_neigbors]
                 new_mp = MapPoint.create_new_mappoint(position=pt_local)
                 if feature_left.color_ is not None:
                     new_mp.color_ = feature_left.color_
@@ -186,7 +187,7 @@ class Frontend():
         previous_desc = np.array(previous_desc, dtype=np.float32)
         for f in self.current_frame_.features_left_:
             if np.shape(f.descriptor_) != (128,):
-                print(f.descriptor_)
+                print("DESCRIPTEUR INVALIDE :", f.descriptor_)
         new_desc = np.array([f.descriptor_ for f in self.current_frame_.features_left_], dtype=np.float32)
 
         knn_matches = self.matcher.knnMatch(previous_desc, new_desc, k=2)
