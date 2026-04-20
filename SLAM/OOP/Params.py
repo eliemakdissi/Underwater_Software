@@ -13,6 +13,10 @@ DEFAULTS = {
     'depth_min': 0.1,
     'depth_max': 15.0,
 
+    # Statistical outlier removal (stereo triangulation)
+    'sor_nb_neighbors': 15,
+    'sor_std_ratio': 15.0,
+
     # Keyframe triggers
     'kf_min_inliers': 50,
     'kf_max_frames': 15,
