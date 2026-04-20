@@ -9,6 +9,8 @@ from Frame import Frame
 from Map import Map
 from MapPoint import MapPoint
 from Backend import Backend
+import faulthandler
+faulthandler.enable()
 
 class FrontendStatus():
     INITING = 0
@@ -30,7 +32,8 @@ class Frontend():
 
         self.map_ = map
         self.backend_ = backend
-        
+        self._backend_thread = None
+
         self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
 
     def add_frame(self, frame: Frame):
@@ -129,7 +132,7 @@ class Frontend():
         points3Dlocal = (points4Dlocal[:3, :] / points4Dlocal[3, :]).T
 
         pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points3Dlocal)
+        pcd.points = o3d.utility.Vector3dVector(np.ascontiguousarray(points3Dlocal))
         nb_neighbors=Params.get('sor_nb_neighbors')
         std_ratio=Params.get('sor_std_ratio')
         _, index = pcd.remove_statistical_outlier(
@@ -307,9 +310,11 @@ class Frontend():
         self.create_new_landmarks()
 
         if self.backend_ is not None:
-            optim_thread = threading.Thread(target=self.backend_.update_map)
-            optim_thread.daemon = True 
-            optim_thread.start()
+            if self._backend_thread is not None and self._backend_thread.is_alive():
+                self._backend_thread.join()
+            self._backend_thread = threading.Thread(target=self.backend_.update_map)
+            self._backend_thread.daemon = True
+            self._backend_thread.start()
 
     def create_new_landmarks(self):
         features_l = self.current_frame_.features_left_
