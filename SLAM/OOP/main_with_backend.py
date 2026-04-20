@@ -1,8 +1,9 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
-import time
-import os
 import time
 
 from Frame_without_rectify import Frame
@@ -38,14 +39,14 @@ def main():
     backend = Backend(map=slam_map, params_stereo=Frame.params)
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
-    start_frame = 1
-    end_frame = 50
+    start_frame = 2410
+    end_frame = 2470
     
     for i in range(start_frame, end_frame, 1):
         t_start = time.time()
    
-        path_l = f'SLAM/images_test/image_caillou/frame_{i+1:04d}_l.jpg'
-        path_r = f'SLAM/images_test/image_caillou/frame_{i+1:04d}_r.jpg'
+        path_l = f'SLAM/data_sortie_mer/frames/gauche/sortie_left/frames/frame_{i+1:06d}.jpg'
+        path_r = f'SLAM/data_sortie_mer/frames/droite/sortie_right/frames/frame_{i+1:06d}.jpg'
         
         if not os.path.exists(path_l) or not os.path.exists(path_r):
              continue

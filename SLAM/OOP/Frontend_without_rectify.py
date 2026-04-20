@@ -2,6 +2,7 @@ import threading
 import cv2 as cv
 import numpy as np
 import time
+import faiss
 
 from Frame import Frame
 from Map import Map
@@ -63,7 +64,7 @@ class Frontend():
         desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
 
         print(f'Nb desc gauche {len(desc_l)} et droit {len(desc_r)}')
-        
+        '''
         knn_matches = self.matcher.knnMatch(desc_l, desc_r, k=2)
         t3 = time.time()
         print(f'Nb match {len(knn_matches)}')
@@ -71,7 +72,7 @@ class Frontend():
         LOWE = 0.80 
         pts_l_brut = []
         pts_r_brut = []
-        idx_l_bruts_temp = []
+        idx_l_bruts = []
 
         for m in knn_matches:
             if len(m) == 2 and m[0].distance < m[1].distance * LOWE:
@@ -80,7 +81,13 @@ class Frontend():
 
                 pts_l_brut.append(features_l[idx_l].position_.pt)
                 pts_r_brut.append(features_r[idx_r].position_.pt)
-                idx_l_bruts_temp.append(idx_l)
+                idx_l_bruts.append(idx_l)
+        '''
+        idx_l_bruts, idx_r_bruts = self.matching_faiss(desc_l, desc_r, lowe = 0.85)
+        t3 = time.time()
+
+        pts_l_brut = [features_l[i].position_.pt for i in idx_l_bruts]
+        pts_r_brut = [features_r[i].position_.pt for i in idx_r_bruts]
 
         print(f'Nb match {len(pts_l_brut)} post Lowe')
         if len(pts_l_brut) < 10:
@@ -108,8 +115,8 @@ class Frontend():
         pts_l_good = pts_l_brut[mask]
         pts_r_good = pts_r_brut[mask]
 
-        idx_l_bruts_arr = np.array(idx_l_bruts_temp)
-        idx_l_bruts = idx_l_bruts_arr[mask].tolist()
+        idx_l_bruts = np.array(idx_l_bruts)
+        idx_l_good = idx_l_bruts[mask].tolist()
         t5 = time.time()
         print(f'Nb match {len(pts_l_good)} post Lowe+essential ransac')
         print(f'{t2-t1}s : loading desc')
@@ -128,7 +135,7 @@ class Frontend():
         points_valides = 0
         for i, pt_local in enumerate(points3Dlocal):
             if 0.1 < pt_local[2] < 15.0:
-                idx_l = idx_l_bruts[i]
+                idx_l = idx_l_good[i]
                 feature_left = features_l[idx_l]
 
                 new_mp = MapPoint.create_new_mappoint(position=pt_local)
@@ -171,6 +178,7 @@ class Frontend():
         previous_desc = np.array(previous_desc, dtype=np.float32)
         new_desc = np.array([f.descriptor_ for f in self.current_frame_.features_left_], dtype=np.float32)
 
+        '''
         knn_matches = self.matcher.knnMatch(previous_desc, new_desc, k=2)
 
         matched_3d_pts = []
@@ -190,6 +198,12 @@ class Frontend():
 
                 good_matches_old_idx.append(m.queryIdx)
                 good_matches_new_idx.append(m.trainIdx)
+        '''
+       
+        good_matches_old_idx,  good_matches_new_idx = self.matching_faiss(previous_desc, new_desc, lowe = 0.85)
+
+        matched_3d_pts = [previous_feature3D[i].map_point_.pos_  for i in good_matches_old_idx]
+        matched_2d_pts = [self.current_frame_.features_left_[i].position_.pt for i in good_matches_new_idx]
 
         if len(matched_3d_pts) >= 15:
             pts3d_arr = np.float32(matched_3d_pts)
@@ -248,7 +262,7 @@ class Frontend():
     def need_new_keyframe(self, num_inliers, num_previous_pts):
         #ratio_survie = num_inliers / max(1, num_previous_pts)
 
-        if num_inliers < 50: 
+        if num_inliers < 150: 
             return True
         
         if self.num_frames_since_last_kf_ > 15 :
@@ -278,6 +292,7 @@ class Frontend():
             optim_thread.start()
 
     def create_new_landmarks(self):
+        t1 = time.time()
         features_l = self.current_frame_.features_left_
         features_r = self.current_frame_.features_right_
 
@@ -289,6 +304,9 @@ class Frontend():
         desc_l = np.array([features_l[i].descriptor_ for i in idx_l_orphelins], dtype=np.float32)
         desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
 
+        t2 = time.time()
+
+        '''
         knn_matches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
         LOWE = 0.80
@@ -305,31 +323,50 @@ class Frontend():
                 pts_l_brut.append(features_l[idx_l_global].position_.pt)
                 pts_r_brut.append(features_r[idx_r].position_.pt)
                 idx_l_bruts_temp.append(idx_l_global)
+        '''
 
+        idx_l_bruts_local, idx_r_bruts = self.matching_faiss(desc_l, desc_r, lowe = 0.85)
+
+        t3 = time.time()
+
+        idx_l_bruts_global = [idx_l_orphelins[i] for i in idx_l_bruts_local]
+
+        pts_l_brut = [features_l[i].position_.pt for i in idx_l_bruts_global]
+        pts_r_brut = [features_r[i].position_.pt for i in idx_r_bruts]
+
+        print(f'Nb match {len(pts_l_brut)} post Lowe')
         if len(pts_l_brut) < 10:
-            return
+            return False
+        t4 =time.time()
 
         pts_l_brut = np.float32(pts_l_brut)
         pts_r_brut = np.float32(pts_r_brut)
 
+        # Filtrage ransac matrice essentielle
         K1 = self.params_stero_['mtx1']
         K2 = self.params_stero_['mtx2']
 
         E, mask = cv.findEssentialMat(
             pts_l_brut, pts_r_brut, 
             cameraMatrix=K1, 
-            method=cv.RANSAC, prob=0.999, threshold=3.0
+            method=cv.RANSAC, prob=0.999, threshold=3.0 
         )
-
+        print(f'Nb match {len(pts_l_brut)} post Lowe')
         if mask is None:
-            return
+            return False
 
         mask = mask.ravel() == 1
+        
         pts_l_good = pts_l_brut[mask]
         pts_r_good = pts_r_brut[mask]
 
-        idx_l_bruts_arr = np.array(idx_l_bruts_temp)
-        idx_l_bruts = idx_l_bruts_arr[mask].tolist()
+        idx_l_global_arr = np.array(idx_l_bruts_global)
+        idx_l_good = idx_l_global_arr[mask].tolist()
+
+        t5 = time.time()
+        print(f'Nb match {len(pts_l_good)} post Lowe+essential ransac')
+        print(f'{t4-t3}s : test lowe')
+        print(f'{t5-t4}s : ransac essential')
 
         # Triangulation directe avec K1 et K2 car on a des pixels.
         P1_unrect = K1 @ np.hstack((np.eye(3), np.zeros((3, 1))))
@@ -347,7 +384,7 @@ class Frontend():
                 pt_global = (T_wc @ pt_local_homo)[:3]
 
                 new_mp = MapPoint.create_new_mappoint(position=pt_global)
-                feat_l = features_l[idx_l_bruts[i]]
+                feat_l = features_l[idx_l_good[i]]
                 
                 feat_l.map_point_ = new_mp
                 new_mp.add_observation(feat_l)
@@ -356,3 +393,40 @@ class Frontend():
                 points_insere += 1
                 
         print(f"[MAP] + {points_insere} nouveaux points projetés en global.")
+
+
+
+    def matching_faiss(self, desc_l : list, desc_r : list, lowe : float) :
+
+        '''
+        Fonction de matching avec Faiss + Lowe
+        Retourne les indices qui ont passé le test de Lowe
+        '''
+        if desc_l is None or desc_r is None or len(desc_l)<2 or len(desc_r)<2:
+            return [], []
+        
+        faiss.omp_set_num_threads(1)
+        
+        desc_l = np.ascontiguousarray(desc_l, dtype=np.float32).reshape(-1, 128)
+        desc_r = np.ascontiguousarray(desc_r, dtype=np.float32).reshape(-1, 128)
+
+        dimension = desc_r.shape[1]
+        index = faiss.IndexFlatL2(dimension)
+        index.add(desc_r)
+
+        k = 2 
+        distances, indices = index.search(desc_l, k)
+
+        idx_l = []
+        idx_r = []
+
+        lowe_sq = lowe * lowe
+
+        for i in range(len(distances)):
+            if distances[i][0] < lowe_sq * distances[i][1]:
+                idx_l.append(i)               
+                idx_r.append(indices[i][0])   
+                
+        return idx_l, idx_r
+
+
