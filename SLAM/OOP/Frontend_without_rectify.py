@@ -37,7 +37,7 @@ class Frontend():
 
     def add_frame(self, frame: Frame):
         self.current_frame_ = frame
-        success = False 
+        success = False
 
         if self.status_ == FrontendStatus.INITING:
             success = self.stero_init()
@@ -139,11 +139,11 @@ class Frontend():
                 idx_l = idx_l_bruts[i]
                 feature_left = features_l[idx_l]
                 # Filtre d'outliers
-                distance_neighbors.append([])
-                for _,other_pt in enumerate(points3Dlocal):
-                    distance_neighbors[i].append(np.linalg.norm(pt_local -other_pt))
-                distance_neighbors[i].sort()
-                nth_distance = distance_neighbors[i][self.necessary_number_neigbors]
+                # distance_neighbors.append([])
+                # for _,other_pt in enumerate(points3Dlocal):
+                #     distance_neighbors[i].append(np.linalg.norm(pt_local -other_pt))
+                # distance_neighbors[i].sort()
+                # nth_distance = distance_neighbors[i][self.necessary_number_neigbors]
                 new_mp = MapPoint.create_new_mappoint(position=pt_local)
                 if feature_left.color_ is not None:
                     new_mp.color_ = feature_left.color_
