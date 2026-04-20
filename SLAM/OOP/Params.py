@@ -15,7 +15,7 @@ DEFAULTS = {
 
     # Statistical outlier removal (stereo triangulation)
     'sor_nb_neighbors': 15,
-    'sor_std_ratio': 15.0,
+    'sor_std_ratio': 0.1,
 
     # Keyframe triggers
     'kf_min_inliers': 50,
