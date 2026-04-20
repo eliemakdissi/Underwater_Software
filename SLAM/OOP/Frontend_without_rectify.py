@@ -176,24 +176,33 @@ class Frontend():
         previous_feature3D = []
         previous_desc = []
 
-        if self.previous_frame_ is not None: 
-            for feature in self.previous_frame_.features_left_: 
+        if self.previous_frame_ is not None:
+            for feature in self.previous_frame_.features_left_:
                 if feature.map_point_ is not None and not feature.is_outlier_:
+                    d = feature.descriptor_
+                    if d is None or np.shape(d) != (128,):
+                        continue
                     previous_feature3D.append(feature)
-                    previous_desc.append(feature.descriptor_)
+                    previous_desc.append(np.asarray(d, dtype=np.float32))
 
         if len(previous_desc) < 15:
             self.status_ = FrontendStatus.LOST
-            # print("Tracking LOST : Pas assez de points 3D dans la frame précédente.")
             return False
-        # for i in range(len(self.current_frame_.features_left_)):
-        #     print(np.shape(self.current_frame_.features_left_[i]))
-        previous_desc = np.array(previous_desc, dtype=np.float32)
-        for f in self.current_frame_.features_left_:
-            if np.shape(f.descriptor_) != (128,):
-                # print("DESCRIPTEUR INVALIDE :", f.descriptor_)
-                pass
-        new_desc = np.array([f.descriptor_ for f in self.current_frame_.features_left_], dtype=np.float32)
+
+        current_features_valid = [
+            f for f in self.current_frame_.features_left_
+            if f.descriptor_ is not None and np.shape(f.descriptor_) == (128,)
+        ]
+        if len(current_features_valid) < 15:
+            self.status_ = FrontendStatus.LOST
+            return False
+        self.current_frame_.features_left_ = current_features_valid
+
+        previous_desc = np.stack(previous_desc).astype(np.float32)
+        new_desc = np.stack([
+            np.asarray(f.descriptor_, dtype=np.float32)
+            for f in self.current_frame_.features_left_
+        ])
 
         knn_matches = self.matcher.knnMatch(previous_desc, new_desc, k=2)
 
@@ -306,12 +315,27 @@ class Frontend():
         features_l = self.current_frame_.features_left_
         features_r = self.current_frame_.features_right_
 
-        idx_l_orphelins = [i for i, f in enumerate(features_l) if f.map_point_ is None]
+        idx_l_orphelins = [
+            i for i, f in enumerate(features_l)
+            if f.map_point_ is None
+            and f.descriptor_ is not None
+            and np.shape(f.descriptor_) == (128,)
+        ]
+        features_r_valid = [
+            f for f in features_r
+            if f.descriptor_ is not None and np.shape(f.descriptor_) == (128,)
+        ]
 
-        if not idx_l_orphelins or len(features_r) == 0:
+        if len(idx_l_orphelins) < 10 or len(features_r_valid) == 0:
             return
-        desc_l = np.array([features_l[i].descriptor_ for i in idx_l_orphelins], dtype=np.float32)
-        desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
+        desc_l = np.stack([
+            np.asarray(features_l[i].descriptor_, dtype=np.float32)
+            for i in idx_l_orphelins
+        ])
+        desc_r = np.stack([
+            np.asarray(f.descriptor_, dtype=np.float32)
+            for f in features_r_valid
+        ])
 
         knn_matches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
@@ -327,7 +351,7 @@ class Frontend():
                 idx_r = m[0].trainIdx
 
                 pts_l_brut.append(features_l[idx_l_global].position_.pt)
-                pts_r_brut.append(features_r[idx_r].position_.pt)
+                pts_r_brut.append(features_r_valid[idx_r].position_.pt)
                 idx_l_bruts_temp.append(idx_l_global)
 
         if len(pts_l_brut) < 10:
@@ -382,6 +406,7 @@ class Frontend():
             # if len(points3Dlocal[index]) != len(points3Dlocal):
             #     print("NOMBRE DE POINTS FILTRES : ",len(points3Dlocal)-len(points3Dlocal[index]))
             points3Dlocal = points3Dlocal[index]
+            idx_l_bruts = [idx_l_bruts[i] for i in index]
         for i, pt_local in enumerate(points3Dlocal):
             if depth_min < pt_local[2] < depth_max:
                 pt_local_homo = np.append(pt_local, 1.0)
