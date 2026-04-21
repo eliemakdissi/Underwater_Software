@@ -68,11 +68,11 @@ class Frontend():
         desc_l = np.array([f.descriptor_ for f in features_l], dtype=np.float32)
         desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
 
-        # print(f'Nb desc gauche {len(desc_l)} et droit {len(desc_r)}')
+        print(f'Nb desc gauche {len(desc_l)} et droit {len(desc_r)}')
 
         knn_matches = self.matcher.knnMatch(desc_l, desc_r, k=2)
         t3 = time.time()
-        # print(f'Nb match {len(knn_matches)}')
+        print(f'Nb match {len(knn_matches)}')
 
         lowe = Params.get('lowe_ratio')
         pts_l_brut = []
@@ -88,7 +88,7 @@ class Frontend():
                 pts_r_brut.append(features_r[idx_r].position_.pt)
                 idx_l_bruts_temp.append(idx_l)
 
-        # print(f'Nb match {len(pts_l_brut)} post Lowe')
+        print(f'Nb match {len(pts_l_brut)} post Lowe')
         if len(pts_l_brut) < 10:
             return False
         t4 =time.time()
@@ -105,7 +105,7 @@ class Frontend():
             cameraMatrix=K1,
             method=cv.RANSAC, prob=0.999, threshold=Params.get('essential_ransac_threshold')
         )
-        # print(f'Nb match {len(pts_l_brut)} post Lowe')
+        print(f'Nb match {len(pts_l_brut)} post Lowe')
         if mask is None:
             return False
 
@@ -117,11 +117,11 @@ class Frontend():
         idx_l_bruts_arr = np.array(idx_l_bruts_temp)
         idx_l_bruts = idx_l_bruts_arr[mask].tolist()
         t5 = time.time()
-        # print(f'Nb match {len(pts_l_good)} post Lowe+essential ransac')
-        # print(f'{t2-t1}s : loading desc')
-        # print(f'{t3-t2}s : matching desc')
-        # print(f'{t4-t3}s : test lowe')
-        # print(f'{t5-t4}s : ransac essential')
+        print(f'Nb match {len(pts_l_good)} post Lowe+essential ransac')
+        print(f'{t2-t1}s : loading desc')
+        print(f'{t3-t2}s : matching desc')
+        print(f'{t4-t3}s : test lowe')
+        print(f'{t5-t4}s : ransac essential')
 
         # Triangulation
         
@@ -167,14 +167,16 @@ class Frontend():
             self.last_keyframe_ = self.current_frame_
 
             self.status_ = FrontendStatus.TRACKING_GOOD
-            # print(f'Init OK - {points_valides} points insérés dans la Map')
+            print(f'Init OK - {points_valides} points insérés dans la Map')
             return True
 
         return False
 
-    def tracking(self): 
+    def tracking(self):
+        t0 = time.time()
         self.current_frame_.preprocess()
         self.current_frame_.extract_features()
+        t1 = time.time()
 
         previous_feature3D = []
         previous_desc = []
@@ -206,8 +208,10 @@ class Frontend():
             np.asarray(f.descriptor_, dtype=np.float32)
             for f in self.current_frame_.features_left_
         ])
+        t2 = time.time()
 
         knn_matches = self.matcher.knnMatch(previous_desc, new_desc, k=2)
+        t3 = time.time()
 
         matched_3d_pts = []
         matched_2d_pts = []
@@ -226,13 +230,15 @@ class Frontend():
 
                 good_matches_old_idx.append(m.queryIdx)
                 good_matches_new_idx.append(m.trainIdx)
+        t4 = time.time()
+        print(f'Nb match {len(matched_3d_pts)} post Lowe')
 
         if len(matched_3d_pts) >= 15:
             pts3d_arr = np.float32(matched_3d_pts)
             pts2d_arr = np.float32(matched_2d_pts)
-            
+
             K1 = self.params_stero_['mtx1']
-            
+
             # Image déjà propre -> distCoeffs = None
             success, rvec_new, tvec_new, inliers = cv.solvePnPRansac(
                 pts3d_arr, pts2d_arr, K1, None,
@@ -240,7 +246,13 @@ class Frontend():
                 iterationsCount=100,
                 reprojectionError=Params.get('pnp_reprojection_error')
             )
-            
+            t5 = time.time()
+            print(f'{t1-t0}s : preprocess + extract')
+            print(f'{t2-t1}s : loading desc')
+            print(f'{t3-t2}s : matching desc')
+            print(f'{t4-t3}s : test lowe')
+            print(f'{t5-t4}s : solvePnPRansac')
+
             if success and inliers is not None and len(inliers) >= 10:
                 R_new, _ = cv.Rodrigues(rvec_new)
                 T_cw_new = np.eye(4)
@@ -265,19 +277,19 @@ class Frontend():
                     
 
                 self.status_ = FrontendStatus.TRACKING_GOOD
-                # print(f"Tracking OK. Pose calculée avec {len(inliers)} inliers PnP.")
+                print(f"Tracking OK. Pose calculée avec {len(inliers)} inliers PnP.")
                 return True
             else:
                 self.status_ = FrontendStatus.TRACKING_BAD
-                # print("Tracking BAD. PnP a échoué.")
+                print("Tracking BAD. PnP a échoué.")
                 return False
         else:
             self.status_ = FrontendStatus.LOST
-            # print("Tracking LOST. Pas assez de correspondances temporelles SIFT.")
+            print("Tracking LOST. Pas assez de correspondances temporelles SIFT.")
             return False
 
     def reset(self):
-        # print("SYSTEM RESET - TRACKING IS LOST")
+        print("SYSTEM RESET - TRACKING IS LOST")
         self.status_ = FrontendStatus.INITING
         self.previous_frame_ = None
         return True
@@ -428,4 +440,4 @@ class Frontend():
                 self.map_.insert_map_point(new_mp)
                 points_insere += 1
                 
-        # print(f"[MAP] + {points_insere} nouveaux points projetés en global.")
+        print(f"[MAP] + {points_insere} nouveaux points projetés en global.")
