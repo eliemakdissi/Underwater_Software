@@ -1,13 +1,27 @@
 # Implementation of the Map class
+import json
+import os
 import open3d as o3d
 import threading
 import time
 import numpy as np
 import plotly.graph_objects as go
 from dash import Dash, dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 
 import Params
+
+VIEW_FILE = '.slam_view.json'
+
+
+def _load_saved_camera():
+    if not os.path.exists(VIEW_FILE):
+        return None
+    try:
+        with open(VIEW_FILE) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
 
 class Map:
 
@@ -84,8 +98,13 @@ class Map:
         self.dash_app = Dash(__name__)
         self.dash_app.layout = html.Div([
             html.H2("SLAM - Live 3D"),
+            html.Div([
+                html.Button("Save view", id='save-view-btn', n_clicks=0),
+                html.Span(id='save-view-status', style={'marginLeft': '10px'}),
+            ], style={'marginBottom': '8px'}),
             dcc.Graph(id='slam-3d', style={'height': '85vh'}),
-            dcc.Interval(id='interval', interval=2000, n_intervals=0)
+            dcc.Store(id='camera-store', data=_load_saved_camera()),
+            dcc.Interval(id='interval', interval=2000, n_intervals=0),
         ])
 
         @self.dash_app.callback(
@@ -94,6 +113,33 @@ class Map:
         )
         def update_plot(_):
             return self._build_figure()
+
+        @self.dash_app.callback(
+            Output('camera-store', 'data'),
+            Input('slam-3d', 'relayoutData'),
+            State('camera-store', 'data'),
+            prevent_initial_call=True,
+        )
+        def remember_camera(relayout, current):
+            if relayout and 'scene.camera' in relayout:
+                return relayout['scene.camera']
+            return current
+
+        @self.dash_app.callback(
+            Output('save-view-status', 'children'),
+            Input('save-view-btn', 'n_clicks'),
+            State('camera-store', 'data'),
+            prevent_initial_call=True,
+        )
+        def save_view(_n, camera):
+            if not camera:
+                return "No view to save yet — rotate the plot first."
+            try:
+                with open(VIEW_FILE, 'w') as f:
+                    json.dump(camera, f)
+                return f"View saved at {time.strftime('%H:%M:%S')}"
+            except OSError as e:
+                return f"Error: {e}"
 
         dash_thread = threading.Thread(
             target=self.dash_app.run,
@@ -164,16 +210,21 @@ class Map:
             ),
         ])
 
+        scene = dict(
+            xaxis=dict(title='X', range=[-5, 5]),
+            yaxis=dict(title='Z (depth)', range=[-5, 5]),
+            zaxis=dict(title='Y', range=[-5, 5]),
+            aspectmode='cube',
+            dragmode='orbit',
+            uirevision='slam-scene',
+        )
+        saved_camera = _load_saved_camera()
+        if saved_camera:
+            scene['camera'] = saved_camera
+
         fig.update_layout(
             title=f'SLAM Live - {n_kf} KFs, {n_pts} pts',
-            scene=dict(
-                xaxis=dict(title='X', range=[-5, 5]),
-                yaxis=dict(title='Z (depth)', range=[-5, 5]),
-                zaxis=dict(title='Y', range=[-5, 5]),
-                aspectmode='cube',
-                dragmode='orbit',
-                uirevision='slam-scene',
-            ),
+            scene=scene,
             uirevision='slam',
             margin=dict(l=0, r=0, t=40, b=0)
         )

@@ -2,12 +2,15 @@ import threading
 import cv2 as cv
 import numpy as np
 import time
+import open3d as o3d
 
 import Params
 from Frame import Frame
 from Map import Map
 from MapPoint import MapPoint
 from Backend import Backend
+import faulthandler
+faulthandler.enable()
 
 class FrontendStatus():
     INITING = 0
@@ -25,15 +28,13 @@ class Frontend():
         self.previous_frame_ = None
         self.last_keyframe_ = None
         self.num_frames_since_last_kf_ = 0
-        
+        self._pose_mutex = threading.Lock()
+
         self.map_ = map
         self.backend_ = backend
-        
-        self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
+        self._backend_thread = None
 
-        # Filtre d'outliers
-        self.necessary_number_neigbors = 15
-        self.radius = 0.1
+        self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
 
     def add_frame(self, frame: Frame):
         self.current_frame_ = frame
@@ -67,11 +68,11 @@ class Frontend():
         desc_l = np.array([f.descriptor_ for f in features_l], dtype=np.float32)
         desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
 
-        print(f'Nb desc gauche {len(desc_l)} et droit {len(desc_r)}')
-        
+        # print(f'Nb desc gauche {len(desc_l)} et droit {len(desc_r)}')
+
         knn_matches = self.matcher.knnMatch(desc_l, desc_r, k=2)
         t3 = time.time()
-        print(f'Nb match {len(knn_matches)}')
+        # print(f'Nb match {len(knn_matches)}')
 
         lowe = Params.get('lowe_ratio')
         pts_l_brut = []
@@ -87,7 +88,7 @@ class Frontend():
                 pts_r_brut.append(features_r[idx_r].position_.pt)
                 idx_l_bruts_temp.append(idx_l)
 
-        print(f'Nb match {len(pts_l_brut)} post Lowe')
+        # print(f'Nb match {len(pts_l_brut)} post Lowe')
         if len(pts_l_brut) < 10:
             return False
         t4 =time.time()
@@ -104,7 +105,7 @@ class Frontend():
             cameraMatrix=K1,
             method=cv.RANSAC, prob=0.999, threshold=Params.get('essential_ransac_threshold')
         )
-        print(f'Nb match {len(pts_l_brut)} post Lowe')
+        # print(f'Nb match {len(pts_l_brut)} post Lowe')
         if mask is None:
             return False
 
@@ -116,11 +117,11 @@ class Frontend():
         idx_l_bruts_arr = np.array(idx_l_bruts_temp)
         idx_l_bruts = idx_l_bruts_arr[mask].tolist()
         t5 = time.time()
-        print(f'Nb match {len(pts_l_good)} post Lowe+essential ransac')
-        print(f'{t2-t1}s : loading desc')
-        print(f'{t3-t2}s : matching desc')
-        print(f'{t4-t3}s : test lowe')
-        print(f'{t5-t4}s : ransac essential')
+        # print(f'Nb match {len(pts_l_good)} post Lowe+essential ransac')
+        # print(f'{t2-t1}s : loading desc')
+        # print(f'{t3-t2}s : matching desc')
+        # print(f'{t4-t3}s : test lowe')
+        # print(f'{t5-t4}s : ransac essential')
 
         # Triangulation
         
@@ -129,6 +130,18 @@ class Frontend():
 
         points4Dlocal = cv.triangulatePoints(P1_unrect, P2_unrect, pts_l_good.T, pts_r_good.T)
         points3Dlocal = (points4Dlocal[:3, :] / points4Dlocal[3, :]).T
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(np.ascontiguousarray(points3Dlocal))
+        nb_neighbors=Params.get('sor_nb_neighbors')
+        std_ratio=Params.get('sor_std_ratio')
+        _, index = pcd.remove_statistical_outlier(
+            nb_neighbors,
+            std_ratio,
+        )
+        print('params : ', nb_neighbors,std_ratio)
+        points3Dlocal = points3Dlocal[index]
+        idx_l_bruts = [idx_l_bruts[i] for i in index]
         t6 =time.time()
         depth_min = Params.get('depth_min')
         depth_max = Params.get('depth_max')
@@ -138,12 +151,6 @@ class Frontend():
             if depth_min < pt_local[2] < depth_max:
                 idx_l = idx_l_bruts[i]
                 feature_left = features_l[idx_l]
-                # Filtre d'outliers
-                # distance_neighbors.append([])
-                # for _,other_pt in enumerate(points3Dlocal):
-                #     distance_neighbors[i].append(np.linalg.norm(pt_local -other_pt))
-                # distance_neighbors[i].sort()
-                # nth_distance = distance_neighbors[i][self.necessary_number_neigbors]
                 new_mp = MapPoint.create_new_mappoint(position=pt_local)
                 if feature_left.color_ is not None:
                     new_mp.color_ = feature_left.color_
@@ -160,7 +167,7 @@ class Frontend():
             self.last_keyframe_ = self.current_frame_
 
             self.status_ = FrontendStatus.TRACKING_GOOD
-            print(f'Init OK - {points_valides} points insérés dans la Map')
+            # print(f'Init OK - {points_valides} points insérés dans la Map')
             return True
 
         return False
@@ -172,23 +179,33 @@ class Frontend():
         previous_feature3D = []
         previous_desc = []
 
-        if self.previous_frame_ is not None: 
-            for feature in self.previous_frame_.features_left_: 
+        if self.previous_frame_ is not None:
+            for feature in self.previous_frame_.features_left_:
                 if feature.map_point_ is not None and not feature.is_outlier_:
+                    d = feature.descriptor_
+                    if d is None or np.shape(d) != (128,):
+                        continue
                     previous_feature3D.append(feature)
-                    previous_desc.append(feature.descriptor_)
+                    previous_desc.append(np.asarray(d, dtype=np.float32))
 
         if len(previous_desc) < 15:
             self.status_ = FrontendStatus.LOST
-            print("Tracking LOST : Pas assez de points 3D dans la frame précédente.")
             return False
-        # for i in range(len(self.current_frame_.features_left_)):
-        #     print(np.shape(self.current_frame_.features_left_[i]))
-        previous_desc = np.array(previous_desc, dtype=np.float32)
-        for f in self.current_frame_.features_left_:
-            if np.shape(f.descriptor_) != (128,):
-                print("DESCRIPTEUR INVALIDE :", f.descriptor_)
-        new_desc = np.array([f.descriptor_ for f in self.current_frame_.features_left_], dtype=np.float32)
+
+        current_features_valid = [
+            f for f in self.current_frame_.features_left_
+            if f.descriptor_ is not None and np.shape(f.descriptor_) == (128,)
+        ]
+        if len(current_features_valid) < 15:
+            self.status_ = FrontendStatus.LOST
+            return False
+        self.current_frame_.features_left_ = current_features_valid
+
+        previous_desc = np.stack(previous_desc).astype(np.float32)
+        new_desc = np.stack([
+            np.asarray(f.descriptor_, dtype=np.float32)
+            for f in self.current_frame_.features_left_
+        ])
 
         knn_matches = self.matcher.knnMatch(previous_desc, new_desc, k=2)
 
@@ -245,21 +262,22 @@ class Frontend():
 
                 if self.need_new_keyframe(len(inliers), len(previous_feature3D)):
                     self.insert_keyframe()
+                    
 
                 self.status_ = FrontendStatus.TRACKING_GOOD
-                print(f"Tracking OK. Pose calculée avec {len(inliers)} inliers PnP.")
+                # print(f"Tracking OK. Pose calculée avec {len(inliers)} inliers PnP.")
                 return True
             else:
                 self.status_ = FrontendStatus.TRACKING_BAD
-                print("Tracking BAD. PnP a échoué.")
+                # print("Tracking BAD. PnP a échoué.")
                 return False
         else:
             self.status_ = FrontendStatus.LOST
-            print("Tracking LOST. Pas assez de correspondances temporelles SIFT.")
+            # print("Tracking LOST. Pas assez de correspondances temporelles SIFT.")
             return False
 
     def reset(self):
-        print("SYSTEM RESET - TRACKING IS LOST")
+        # print("SYSTEM RESET - TRACKING IS LOST")
         self.status_ = FrontendStatus.INITING
         self.previous_frame_ = None
         return True
@@ -292,20 +310,37 @@ class Frontend():
         self.create_new_landmarks()
 
         if self.backend_ is not None:
-            optim_thread = threading.Thread(target=self.backend_.update_map)
-            optim_thread.daemon = True 
-            optim_thread.start()
+            if self._backend_thread is not None and self._backend_thread.is_alive():
+                self._backend_thread.join()
+            self._backend_thread = threading.Thread(target=self.backend_.update_map)
+            self._backend_thread.daemon = True
+            self._backend_thread.start()
 
     def create_new_landmarks(self):
         features_l = self.current_frame_.features_left_
         features_r = self.current_frame_.features_right_
 
-        idx_l_orphelins = [i for i, f in enumerate(features_l) if f.map_point_ is None]
+        idx_l_orphelins = [
+            i for i, f in enumerate(features_l)
+            if f.map_point_ is None
+            and f.descriptor_ is not None
+            and np.shape(f.descriptor_) == (128,)
+        ]
+        features_r_valid = [
+            f for f in features_r
+            if f.descriptor_ is not None and np.shape(f.descriptor_) == (128,)
+        ]
 
-        if not idx_l_orphelins or len(features_r) == 0:
+        if len(idx_l_orphelins) < 10 or len(features_r_valid) == 0:
             return
-        desc_l = np.array([features_l[i].descriptor_ for i in idx_l_orphelins], dtype=np.float32)
-        desc_r = np.array([f.descriptor_ for f in features_r], dtype=np.float32)
+        desc_l = np.stack([
+            np.asarray(features_l[i].descriptor_, dtype=np.float32)
+            for i in idx_l_orphelins
+        ])
+        desc_r = np.stack([
+            np.asarray(f.descriptor_, dtype=np.float32)
+            for f in features_r_valid
+        ])
 
         knn_matches = self.matcher.knnMatch(desc_l, desc_r, k=2)
 
@@ -321,7 +356,7 @@ class Frontend():
                 idx_r = m[0].trainIdx
 
                 pts_l_brut.append(features_l[idx_l_global].position_.pt)
-                pts_r_brut.append(features_r[idx_r].position_.pt)
+                pts_r_brut.append(features_r_valid[idx_r].position_.pt)
                 idx_l_bruts_temp.append(idx_l_global)
 
         if len(pts_l_brut) < 10:
@@ -361,6 +396,22 @@ class Frontend():
         depth_min = Params.get('depth_min')
         depth_max = Params.get('depth_max')
         points_insere = 0
+        # Filtre d'outliers
+
+        pcd = o3d.geometry.PointCloud()
+        with self._pose_mutex:
+            pcd.points = o3d.utility.Vector3dVector(points3Dlocal.copy())
+            nb_neighbors=Params.get('sor_nb_neighbors')
+            std_ratio=Params.get('sor_std_ratio')
+            _, index = pcd.remove_statistical_outlier(
+                nb_neighbors=nb_neighbors,
+                std_ratio=std_ratio,
+            )
+            print('params : ', nb_neighbors,std_ratio)
+            # if len(points3Dlocal[index]) != len(points3Dlocal):
+            #     print("NOMBRE DE POINTS FILTRES : ",len(points3Dlocal)-len(points3Dlocal[index]))
+            points3Dlocal = points3Dlocal[index]
+            idx_l_bruts = [idx_l_bruts[i] for i in index]
         for i, pt_local in enumerate(points3Dlocal):
             if depth_min < pt_local[2] < depth_max:
                 pt_local_homo = np.append(pt_local, 1.0)
@@ -377,4 +428,4 @@ class Frontend():
                 self.map_.insert_map_point(new_mp)
                 points_insere += 1
                 
-        print(f"[MAP] + {points_insere} nouveaux points projetés en global.")
+        # print(f"[MAP] + {points_insere} nouveaux points projetés en global.")
