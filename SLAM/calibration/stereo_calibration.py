@@ -2,22 +2,14 @@ import numpy as np
 import cv2 as cv
 import glob
 import pickle
+import json
 
 
 CHESSBOARD_SIZE = (9, 7) 
 SQUARE_SIZE = 0.030
 
-PATH_IMAGES_GAUCHE = 'SLAM/calibration/set_doublecam/*_l.jpg'
-PATH_IMAGES_DROITE = 'SLAM/calibration/set_doublecam/*_r.jpg'
-
-CALIB_DROITE = 'SLAM/calibration/param/parametres_calibeau_premierecam.txt'
-CALIB_GAUCHE = 'SLAM/calibration/param/parametres_calibeau_deuxiemecam.txt'
-
-with open(CALIB_GAUCHE, 'rb') as f:
-    mtx1, dist1, _, _ = pickle.load(f) # On ne garde que la matrice et la distorsion
-
-with open(CALIB_DROITE, 'rb') as f:
-    mtx2, dist2, _, _ = pickle.load(f)
+PATH_IMAGES_GAUCHE = 'SLAM/calibration/set_calib_finalpiscine/*_l.jpg'
+PATH_IMAGES_DROITE = 'SLAM/calibration/set_calib_finalpiscine/*_r.jpg'
 
 # termination criteria
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -73,8 +65,8 @@ for img_g_path, img_d_path in zip(images_gauche, images_droite):
         vis = np.hstack([vis_g, vis_d])
         vis_resized = cv.resize(vis, (0, 0), fx=1, fy=1)
         pair_name = img_g_path.split('/')[-1]
-        cv.imshow(f"Corners - {pair_name} (press any key)", vis_resized)
-        cv.waitKey(0)
+        # cv.imshow(f"Corners - {pair_name} (press any key)", vis_resized)
+        # cv.waitKey(0)
 
         paires_valides += 1
         objpoints.append(objp)
@@ -88,13 +80,22 @@ if paires_valides < 10:
     print("Less than 10 found")
 
 
-image_size = gray_g.shape[::-1] 
+image_size = gray_g.shape[::-1]
+
+# Calibration individuelle de chaque caméra
+ret_g, mtx1, dist1, _, _ = cv.calibrateCamera(
+    objpoints, imgpoints_gauche, image_size, None, None)
+print(f"Erreur de reprojection RMS caméra gauche : {ret_g:.4f} pixels")
+
+ret_d, mtx2, dist2, _, _ = cv.calibrateCamera(
+    objpoints, imgpoints_droite, image_size, None, None)
+print(f"Erreur de reprojection RMS caméra droite : {ret_d:.4f} pixels")
 
 flags = cv.CALIB_FIX_INTRINSIC
 
 ret_stereo, mtx1, dist1, mtx2, dist2, R, T, E, F = cv.stereoCalibrate(
-    objpoints, imgpoints_gauche, imgpoints_droite, 
-    mtx1, dist1, mtx2, dist2, 
+    objpoints, imgpoints_gauche, imgpoints_droite,
+    mtx1, dist1, mtx2, dist2,
     image_size, criteria=criteria, flags=flags)
 
 print(f"Erreur de reprojection RMS : {ret_stereo:.4f} pixels")
@@ -117,6 +118,14 @@ stereo_params = {
     'Q': Q
 }
 
-fichier_sortie = 'SLAM/calibration/param/stereo_params_complets.pkl'
+fichier_sortie = 'SLAM/calibration/param/stereo_params_complets_endroit.pkl'
 with open(fichier_sortie, 'wb') as f:
     pickle.dump(stereo_params, f)
+
+fichier_sortie_json = 'SLAM/calibration/param/stereo_params_complets_endroit.json'
+stereo_params_json = {
+    k: (v.tolist() if isinstance(v, np.ndarray) else v)
+    for k, v in stereo_params.items()
+}
+with open(fichier_sortie_json, 'w') as f:
+    json.dump(stereo_params_json, f, indent=2)

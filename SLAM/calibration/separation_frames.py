@@ -76,8 +76,8 @@ def extract_and_split_frames(video_path, output_folder, num_frames=100):
 # ==========================================
 if __name__ == "__main__":
     # Remplace par tes propres chemins
-    MY_VIDEO_PATH = "SLAM/images_test/set_3_caillou/2026-03-27 14-48-19.mp4" 
-    MY_OUTPUT_FOLDER = "SLAM/images_test/set_3_caillou"
+    MY_VIDEO_PATH = "SLAM/calibration/set_calib_finalpiscine/2026-04-15 14-45-23.mp4" 
+    MY_OUTPUT_FOLDER = "SLAM/calibration/set_calib_finalpiscine"
     NUM_FRAMES_TO_EXTRACT = 100
 
     extract_and_split_frames(MY_VIDEO_PATH, MY_OUTPUT_FOLDER, num_frames=NUM_FRAMES_TO_EXTRACT)
