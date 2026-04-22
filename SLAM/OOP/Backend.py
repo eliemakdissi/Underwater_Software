@@ -1,3 +1,4 @@
+import threading
 import numpy as np
 import g2opy as g2o
 import cv2 as cv
@@ -15,9 +16,35 @@ class Backend:
         self.fy = self.K[1, 1]
         self.cx = self.K[0, 2]
         self.cy = self.K[1, 2]
-        self.baseline = -self.params_stero_['P2'][0, 3] / self.fx 
-        
-        self.MP_OFFSET = 100000 
+        self.baseline = -self.params_stero_['P2'][0, 3] / self.fx
+
+        self.MP_OFFSET = 100000
+
+        self.loop_constraints = []
+        self._loop_mutex = threading.Lock()
+
+    def add_loop_constraints(self, loops):
+        """loops: list of (kf_query_id, kf_candidate_id). The relative pose is
+        computed now, from the current (noisy) frontend poses, so the edge
+        snapshots the measurement at detection time."""
+        all_kfs = {kf.id_: kf for kf in self.map_.get_all_keyframes()}
+        new_constraints = []
+        for query_id, cand_id in loops:
+            kf_q = all_kfs.get(query_id)
+            kf_c = all_kfs.get(cand_id)
+            if kf_q is None or kf_c is None:
+                continue
+            # Pose vertices store T_cw as SE3Quat. For EdgeSE3Expmap with
+            # v1=candidate, v2=query, the measurement is T_v2 * T_v1^-1.
+            T_rel = kf_q.pose_ @ np.linalg.inv(kf_c.pose_)
+            new_constraints.append({
+                "kf1": cand_id,
+                "kf2": query_id,
+                "T_rel": T_rel,
+                "info": np.eye(6) * 100.0,
+            })
+        with self._loop_mutex:
+            self.loop_constraints.extend(new_constraints)
 
     def setup_optimizer(self):
         optimizer = g2o.SparseOptimizer()
@@ -86,9 +113,31 @@ class Backend:
                 optimizer.add_edge(edge)
                 edges_and_features.append((edge, feature, mp))
 
+        # Loop-closure edges (only usable if both endpoints are in the window)
+        with self._loop_mutex:
+            pending = self.loop_constraints
+            self.loop_constraints = []
+        loop_edges_added = 0
+        for c in pending:
+            if c["kf1"] not in valid_kf_ids or c["kf2"] not in valid_kf_ids:
+                continue
+            edge = g2o.EdgeSE3Expmap()
+            edge.set_vertex(0, optimizer.vertex(c["kf1"]))
+            edge.set_vertex(1, optimizer.vertex(c["kf2"]))
+            T = c["T_rel"]
+            edge.set_measurement(g2o.SE3Quat(T[:3, :3], T[:3, 3]))
+            edge.set_information(c["info"])
+            rk = g2o.RobustKernelHuber()
+            rk.set_delta(np.sqrt(7.815))
+            edge.set_robust_kernel(rk)
+            optimizer.add_edge(edge)
+            loop_edges_added += 1
+        if loop_edges_added > 0:
+            print(f"[BACKEND] {loop_edges_added} loop-closure edge(s) added to BA")
+
         # Optimisation
         optimizer.initialize_optimization()
-        optimizer.optimize(10) 
+        optimizer.optimize(10)
 
         # Rejet des outliers - on continue jusqu'à avoir +50% d'outliers ou itérer 5 fois
         iteration = 0

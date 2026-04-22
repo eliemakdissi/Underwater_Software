@@ -41,6 +41,17 @@ class Map:
         self.display_frame_ = None
         self.display_mutex_ = threading.Lock()
 
+        self.loop_closure_kfs_ = set()
+
+    def mark_loop_closure(self, kf_id_a, kf_id_b):
+        with self.data_mutex_:
+            self.loop_closure_kfs_.add(kf_id_a)
+            self.loop_closure_kfs_.add(kf_id_b)
+
+    def get_loop_closure_kfs(self):
+        with self.data_mutex_:
+            return set(self.loop_closure_kfs_)
+
     def set_display_frame(self, frame):
         with self.display_mutex_:
             self.display_frame_ = frame
@@ -236,6 +247,9 @@ class Map:
         # --- Trajectory trace (always present, empty if no data) ---
         traj_x, traj_y, traj_z = [], [], []
         start_x, start_y, start_z = [], [], []
+        marker_colors = []
+        loop_kfs = self.get_loop_closure_kfs()
+        n_loops = 0
 
         if keyframes:
             cam_pos = []
@@ -245,6 +259,8 @@ class Map:
             cam_pos = np.array(cam_pos)
             traj_x, traj_y, traj_z = cam_pos[:, 0], cam_pos[:, 2], cam_pos[:, 1]
             start_x, start_y, start_z = [cam_pos[0, 0]], [cam_pos[0, 2]], [cam_pos[0, 1]]
+            marker_colors = ['red' if kf.id_ in loop_kfs else 'blue' for kf in keyframes]
+            n_loops = sum(1 for kf in keyframes if kf.id_ in loop_kfs)
 
         # --- Points trace (always present, empty if no data) ---
         pts_x, pts_y, pts_z = [], [], []
@@ -272,7 +288,7 @@ class Map:
             go.Scatter3d(
                 x=traj_x, y=traj_y, z=traj_z,
                 mode='lines+markers',
-                marker=dict(size=4, color='blue'),
+                marker=dict(size=4, color=marker_colors if marker_colors else 'blue'),
                 line=dict(color='blue', width=3),
                 name='Trajectory'
             ),
@@ -303,7 +319,7 @@ class Map:
             scene['camera'] = saved_camera
 
         fig.update_layout(
-            title=f'SLAM Live - {n_kf} KFs, {n_pts} pts',
+            title=f'SLAM Live - {n_kf} KFs ({n_loops} loop), {n_pts} pts',
             scene=scene,
             uirevision='slam',
             margin=dict(l=0, r=0, t=40, b=0)

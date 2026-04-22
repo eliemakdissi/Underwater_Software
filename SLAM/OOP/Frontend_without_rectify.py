@@ -1,3 +1,4 @@
+import os
 import threading
 import cv2 as cv
 import numpy as np
@@ -9,8 +10,26 @@ from Frame import Frame
 from Map import Map
 from MapPoint import MapPoint
 from Backend import Backend
+from database import LoopClosureDatabase
+from vocabulary_tree import VocabularyTree
 import faulthandler
 faulthandler.enable()
+
+
+def _verify_loop_geometrically(words_a, words_b, min_common_words=15):
+    return len(set(words_a) & set(words_b)) >= min_common_words
+
+
+def _count_vocab_leaves(tree):
+    leaves = []
+    def _walk(n):
+        if n.is_leaf:
+            leaves.append(n.word_id)
+        else:
+            for c in n.children:
+                _walk(c)
+    _walk(tree)
+    return max(leaves) + 1 if leaves else 0
 
 class FrontendStatus():
     INITING = 0
@@ -35,6 +54,17 @@ class Frontend():
         self._backend_thread = None
 
         self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
+
+        vocab_path = os.path.join(os.path.dirname(__file__), "mon_vocabulaire_sift.pkl")
+        if os.path.exists(vocab_path):
+            self.vocab_tree = VocabularyTree.load(vocab_path)
+            num_words = _count_vocab_leaves(self.vocab_tree)
+            self.loop_db = LoopClosureDatabase(num_words=num_words)
+            print(f"[Frontend] Loop closure enabled ({num_words} visual words)")
+        else:
+            self.vocab_tree = None
+            self.loop_db = None
+            print(f"[Frontend] Loop closure disabled — vocab file not found at {vocab_path}")
 
     def add_frame(self, frame: Frame):
         self.current_frame_ = frame
@@ -322,12 +352,53 @@ class Frontend():
 
         self.create_new_landmarks()
 
+        if self.loop_db is not None:
+            self._loop_closure_step()
+
         if self.backend_ is not None:
             if self._backend_thread is not None and self._backend_thread.is_alive():
                 self._backend_thread.join()
             self._backend_thread = threading.Thread(target=self.backend_.update_map)
             self._backend_thread.daemon = True
             self._backend_thread.start()
+
+    def _loop_closure_step(self):
+        kf = self.current_frame_
+        descs = [
+            np.asarray(f.descriptor_, dtype=np.float32)
+            for f in kf.features_left_
+            if f.descriptor_ is not None and np.shape(f.descriptor_) == (128,)
+        ]
+        if len(descs) == 0:
+            return
+
+        words = self.vocab_tree.transform(np.stack(descs))
+        if len(words) == 0:
+            return
+
+        kf_entry = {"id": kf.id_, "words": words}
+
+        candidates = self.loop_db.find_loop_candidates(
+            words, current_kf_id=kf.id_, min_temporal_distance=10, top_k=3
+        )
+
+        verified = []
+        for cand_id, score in candidates:
+            cand_entry = self.loop_db.get_keyframe(cand_id)
+            if cand_entry is None:
+                continue
+            if score < 0.2:
+                continue
+            if not _verify_loop_geometrically(words, cand_entry["words"]):
+                continue
+            print(f"[LOOP CLOSURE] Loop detected between KF_{kf.id_} and KF_{cand_id} (score={score:.3f})")
+            self.map_.mark_loop_closure(kf.id_, cand_id)
+            verified.append((kf.id_, cand_id))
+
+        self.loop_db.add_keyframe(kf_entry)
+
+        if verified and self.backend_ is not None:
+            self.backend_.add_loop_constraints(verified)
 
     def create_new_landmarks(self):
         features_l = self.current_frame_.features_left_
