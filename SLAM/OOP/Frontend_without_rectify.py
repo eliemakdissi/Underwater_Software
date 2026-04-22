@@ -8,6 +8,18 @@ from Frame import Frame
 from Map import Map
 from MapPoint import MapPoint
 from Backend import Backend
+from database import LoopClosureDatabase
+from vocabulary_tree import VocabularyTree
+
+
+VOCABSIZE = 50
+
+def verify_loop_geometrically(current_kf, candidate_kf, min_common_words=15):
+        current_words = set(current_kf["words"])
+        candidate_words = set(candidate_kf["words"])
+        common = len(current_words.intersection(candidate_words))
+        return common >= min_common_words
+
 
 class FrontendStatus():
     INITING = 0
@@ -30,6 +42,11 @@ class Frontend():
         self.backend_ = backend
         
         self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
+        self.vocab_size = VOCABSIZE
+        
+        self.loop_db = LoopClosureDatabase(num_words=self.vocab_size)  # vocab_size à définir
+        self.vocab_tree = VocabularyTree.load("mon_vocabulaire_sift.pkl")  # Charger le vocabulaire entraîné
+        self.last_kf_desc = None  # Derniers descripteurs de keyframe
 
     def add_frame(self, frame: Frame):
         self.current_frame_ = frame
@@ -156,6 +173,58 @@ class Frontend():
             return True
 
         return False
+    
+
+    def detect_loop_candidates(self, current_kf):
+        """Détecte les boucles candidates pour le keyframe courant."""
+        # 1. Extraire les mots visuels pour le keyframe courant
+        words_in_image = current_kf["words"]  # Utilise la clé "words" du dictionnaire
+
+        # 2. Rechercher les candidats dans la base
+        candidates = self.loop_db.find_loop_candidates(
+            words_in_image,
+            current_kf_id=current_kf["id"],  # Utilise la clé "id" du dictionnaire
+            min_temporal_distance=10,
+            top_k=3
+        )
+
+        # 3. Vérification géométrique
+        verified_loops = []
+        for candidate_id, score in candidates:
+            candidate_kf = self.loop_db.get_keyframe(candidate_id)
+            if verify_loop_geometrically(current_kf, candidate_kf):
+                print(f"[LOOP] Boucle détectée avec KF_{candidate_id} (score={score:.3f})")
+                self.show_loop_match(current_kf, candidate_kf)
+                verified_loops.append((candidate_id, score))
+
+        return verified_loops
+    
+
+    def show_loop_match(self, kf1, kf2):
+        """Affiche les deux keyframes candidates pour validation visuelle."""
+        # Récupérer les chemins des images depuis les dictionnaires
+        img1 = cv.imread(kf1["path_L"])  # Utilise la clé "path_L" du dictionnaire
+        img2 = cv.imread(kf2["path_L"])
+
+        if img1 is None or img2 is None:
+            print("Erreur : Impossible de charger les images.")
+            return
+
+        # Redimensionner pour un affichage côté à côté
+        h = min(img1.shape[0], img2.shape[0])
+        img1 = cv.resize(img1, (int(img1.shape[1] * h / img1.shape[0]), h))
+        img2 = cv.resize(img2, (int(img2.shape[1] * h / img2.shape[0]), h))
+
+        # Concatenation horizontale
+        combined = cv.hconcat([img1, img2])
+        cv.putText(combined, f"Loop Candidate: KF_{kf1['id']} <-> KF_{kf2['id']}",
+                    (20, 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        # Affichage
+        cv.imshow("Loop Closure Candidate", combined)
+        cv.waitKey(1000)  # Attendre 1 seconde
+        cv.destroyAllWindows()
+
 
     def tracking(self): 
         self.current_frame_.preprocess()
@@ -288,8 +357,25 @@ class Frontend():
 
         if self.backend_ is not None:
             optim_thread = threading.Thread(target=self.backend_.update_map)
-            optim_thread.daemon = True 
+            optim_thread.daemon = True
             optim_thread.start()
+
+        # Loop CLOSURE
+        kf_data = {
+            "id": self.current_frame_.id_,
+            "desc": np.array([f.descriptor_ for f in self.current_frame_.features_left_ if f.map_point_ is not None]),
+            "words": self.vocab_tree.transform([f.descriptor_ for f in self.current_frame_.features_left_ if f.map_point_ is not None]),
+            "pose": self.current_frame_.pose_,
+            "path_L": f"SLAM/data_sortie_mer/frames/gauche/sortie_left.mp4_fixed/frames/frame_{self.current_frame_.id_:06d}.jpg"  # Ajoute le chemin de l'image
+        }
+        self.loop_db.add_keyframe(kf_data)
+
+        # Détecter les boucles candidates
+        print("Passage dans detect loop")
+        loops = self.detect_loop_candidates(kf_data)
+        if loops:
+            print(f"[LOOP] Boucles détectées : {loops}")
+            self.backend_.add_loop_constraints(loops)  # Transmettre au Backend
 
     def create_new_landmarks(self):
         t1 = time.time()

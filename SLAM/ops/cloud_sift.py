@@ -1,6 +1,6 @@
 # Generate a 3D cloud of points using sift
 
-import preprocess 
+import ops.preprocess 
 import numpy as np
 import cv2 as cv
 import pickle
@@ -47,10 +47,38 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     print(IMAGE_SIZE)
 
-    with open('SLAM/calibration/param/stereo_a_lenvers.pkl', 'rb') as f:
-        params = pickle.load(f)
+    """ with open('/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/calibration/param/stereo_a_lenvers.pkl', 'rb') as f:
+        params = pickle.load(f) """
 
-    print(params)
+    params = {'mtx1': np.array([[1.25051139e+03, 0.00000000e+00, 9.83089787e+02],
+       [0.00000000e+00, 1.25043408e+03, 5.31404956e+02],
+       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]), 'dist1': np.array([[-0.32465656,  0.19275159, -0.00075876,  0.0038447 , -0.0540854 ]]), 'mtx2': np.array([[1.24269700e+03, 0.00000000e+00, 9.67192665e+02],
+       [0.00000000e+00, 1.24336262e+03, 5.71800196e+02],
+       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]), 'dist2': np.array([[-0.32106801,  0.18508454,  0.00183416,  0.0011332 , -0.04652458]]), 'R': np.array([[ 0.99926041, -0.00330228,  0.03831103],
+       [ 0.00421827,  0.99970658, -0.02385302],
+       [-0.03822102,  0.02399699,  0.99898113]]), 'T': np.array([[-0.04065602],
+       [-0.0002887 ],
+       [-0.00069275]]), 'R1': np.array([[ 0.998469  ,  0.00420484,  0.05515408],
+       [-0.00353962,  0.99991988, -0.01215338],
+       [-0.05520077,  0.01193954,  0.99840389]]), 'R2': np.array([[ 0.99982966,  0.00709983,  0.01703628],
+       [-0.00730462,  0.99990144,  0.01198936],
+       [-0.01694948, -0.01211176,  0.99978299]]), 'P1': np.array([[1.19671761e+03, 0.00000000e+00, 9.14563248e+02, 0.00000000e+00],
+       [0.00000000e+00, 1.19671761e+03, 5.57418053e+02, 0.00000000e+00],
+       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00, 0.00000000e+00]]), 'P2': np.array([[ 1.19671761e+03,  0.00000000e+00,  9.14563248e+02,
+        -4.86620583e+01],
+       [ 0.00000000e+00,  1.19671761e+03,  5.57418053e+02,
+         0.00000000e+00],
+       [ 0.00000000e+00,  0.00000000e+00,  1.00000000e+00,
+         0.00000000e+00]]), 'roi1': (0, 0, 1920, 1080), 'roi2': (0, 0, 1920, 1080), 'Q': np.array([[ 1.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+        -9.14563248e+02],
+       [ 0.00000000e+00,  1.00000000e+00,  0.00000000e+00,
+        -5.57418053e+02],
+       [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+         1.19671761e+03],
+       [ 0.00000000e+00,  0.00000000e+00,  2.45924166e+01,
+        -0.00000000e+00]])}
+
+    #print(params)
 
     # Preprocessing
 
@@ -70,13 +98,13 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
     for y in range(0, combined.shape[0], 30):
         cv.line(combined, (0, y), (combined.shape[1], y), (0, 255, 0), 1)
         
-    cv.imshow("Test Epipolaire", combined)
+    """ cv.imshow("Test Epipolaire", combined)
     cv.waitKey(0)
-    cv.destroyAllWindows()
+    cv.destroyAllWindows() """
     
 
-    img_l_clean = preprocess.cl_vert(img_l_rect)
-    img_r_clean = preprocess.cl_vert(img_r_rect)
+    img_l_clean = ops.preprocess.cl_vert(img_l_rect)
+    img_r_clean = ops.preprocess.cl_vert(img_r_rect)
 
     #img_l_clean= preprocess.cl_correction(img_l_rect)
     #img_r_clean = preprocess.cl_correction(img_r_rect)
@@ -248,12 +276,12 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
 
     combined = cv.hconcat([vis_g, vis_d])
     
-    plt.figure(figsize=(16, 8))
+    """ plt.figure(figsize=(16, 8))
     plt.title(f"Points utilisés pour la 3D ({len(pts_g)} Inliers)")
     plt.imshow(combined)
     plt.axis('off')
     plt.tight_layout()
-    plt.show()
+    plt.show() """
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
@@ -274,12 +302,12 @@ def generate_cloud(PATH_IMG_L : str, PATH_IMG_R : str, akaze_t : float = 0.0001,
         pts_g_clean_final = pts_g[mask]
         desc_l_clean_final = desc_l[index_g_clean]
         
-        ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
+        """ ax.scatter(p3d[:, 0], p3d[:, 2], -p3d[:, 1], s=1, c='r') # On inverse Y et Z pour l'affichage
         ax.set_xlabel('X (Largeur)')
         ax.set_ylabel('Z (Profondeur)')
         ax.set_zlabel('Y (Hauteur)')
         plt.title(f"Aperçu rapide du nuage de points - {len(points3D)} bruts - {len(p3d)} points valides")
-        plt.show()
+        plt.show() """
     
     return p3d, pts_g_clean_final, desc_l_clean_final 
 

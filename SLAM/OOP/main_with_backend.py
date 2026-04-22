@@ -11,6 +11,11 @@ from Map import Map
 from Frontend_without_rectify import Frontend
 from Backend import Backend
 
+
+
+
+
+
 def save_point_cloud_ply(filename, xyz_points):
     """
     Sauvegarde un tableau numpy de points 3D au format .ply ASCII.
@@ -39,17 +44,18 @@ def main():
     backend = Backend(map=slam_map, params_stereo=Frame.params)
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
-    start_frame = 2410
-    end_frame = 2470
+    start_frame = 0000
+    end_frame = 50
     
     for i in range(start_frame, end_frame, 1):
         t_start = time.time()
-   
-        path_l = f'SLAM/data_sortie_mer/frames/gauche/sortie_left/frames/frame_{i+1:06d}.jpg'
-        path_r = f'SLAM/data_sortie_mer/frames/droite/sortie_right/frames/frame_{i+1:06d}.jpg'
-        
+
+        path_l = f'/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/images_test/image_caillou/frame_{i+1:04d}_l.jpg'
+        path_r = f'/Users/pgpetitmangin/underwater/Underwater_Software/SLAM/images_test/image_caillou/frame_{i+1:04d}_r.jpg'
+        print(path_l)
         if not os.path.exists(path_l) or not os.path.exists(path_r):
-             continue
+            print("probleme de path")
+            continue
         
         img_l = cv.imread(path_l, cv.IMREAD_COLOR) 
         img_r = cv.imread(path_r, cv.IMREAD_COLOR)

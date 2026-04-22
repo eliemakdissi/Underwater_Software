@@ -1,5 +1,5 @@
 import numpy as np
-import g2opy as g2o
+import g2o
 import cv2 as cv
 
 import Map
@@ -17,7 +17,25 @@ class Backend:
         self.baseline = -self.params_stero_['P2'][0, 3] / self.fx 
         
         self.MP_OFFSET = 100000 
+        self.loop_constraints : list[dict] = []  # Stocker les contraintes de boucle
 
+    def add_loop_constraints(self, loops):
+        """Ajoute les contraintes de boucle au graphe."""
+        for candidate_id, score in loops:
+            # Récupérer les poses des keyframes impliquées
+            current_kf = self.map_.get_active_keyframes()[-1]  # Dernier keyframe
+            candidate_kf = self.map_.keyframes_[candidate_id]
+
+            # Calculer la transformation relative entre les deux keyframes
+            T_candidate_to_current = np.linalg.inv(current_kf.pose_) @ candidate_kf.pose_
+
+            # Ajouter la contrainte au graphe (exemple avec g2o)
+            self.loop_constraints.append({
+                "kf1": candidate_kf.id_,
+                "kf2": current_kf.id_,
+                "transform": T_candidate_to_current,
+                "information": np.eye(6) * 1e-4  
+        })
     def setup_optimizer(self):
         optimizer = g2o.SparseOptimizer()
         solver = g2o.BlockSolverSE3(g2o.LinearSolverEigenSE3())
@@ -127,6 +145,21 @@ class Backend:
         for mp in active_mappoints:
             v_p = optimizer.vertex(mp.id_ + self.MP_OFFSET)
             mp.pos = v_p.estimate()
-            
-        # nettoyage de la mémoire
+        
+        for constraint in self.loop_constraints:
+            edge = g2o.EdgeSE3Expmap()
+            edge.set_vertex(0, self.optimizer.vertex(constraint["kf1"]))
+            edge.set_vertex(1, self.optimizer.vertex(constraint["kf2"]))
+            edge.set_measurement(g2o.SE3Quat(
+                constraint["transform"][:3, :3],
+                constraint["transform"][:3, 3]
+            ))
+            edge.set_information(constraint["information"])
+            self.optimizer.add_edge(edge)
+
+        # Optimisation
+        self.optimizer.initialize_optimization()
+        self.optimizer.optimize(10)
+        self.loop_constraints = []  # Réinitialiser après optimisation
+            # nettoyage de la mémoire
         self.map_.clean_map()
