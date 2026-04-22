@@ -9,7 +9,7 @@ Even if you restart your computer, the "Bind" stays active.
 
 4) You must run 'usbipd attach --wsl --busid [name]' every time you plug the sensor in or restart your computer.
 
-5) in vscode terminal => sudo ./packet_example ttyUSB0 115200
+5) in vscode terminal go to ~/Underwater_Software/IMU/C/Dynamic => make => sudo ./packet_example ttyUSB0 115200
 -------------------------------------------------------------------------------------------------------------------------------------------------
 6) first get inside ardupilot-master folder inside IMU => click on Docker Desktop icon then in the tray and wait till the docker icon appears in the tray icons
  => docker run --rm -it -v "$(pwd):/ardupilot" -u "$(id -u):$(id -g)" ardupilot:latest bash
@@ -39,3 +39,19 @@ debug: Sub::write_debug("Hello World!");
 -------------------------------------------------------------------------------------------------------------------------------------------------
 10) export project structure (cd inside where you want to have the structure): tree -I 'node_modules|.git' -L 3 > structure.txt
 11) export to ai-friendly format: npx repomix --ignore "**/.git/**,**/node_modules/**,**/dist/**,**/build/**,**/*.log,**/*.bin,**/*.tmp,**/.env"
+-------------------------------------------------------------------------------------------------------------------------------------------------
+12) ./anpp_log_decoder "/home/elie/Underwater_Software/IMU/OrientusLog_26-03-16_15-04-58.anpp"
+13) terminal 1:  socat -d -d pty,raw,echo=0,link=/tmp/orientus_tx pty,raw,echo=0,link=/tmp/orientus_rx
+14) terminal 2:  cat /home/elie/Underwater_Software/IMU/OrientusLog_26-03-16_15-04-58.anpp > /tmp/orientus_tx
+15) terminal 3: Tools/autotest/sim_vehicle.py -v ArduSub -f vectored --no-rebuild --console --add-param-file=/tmp/orientus_test.parm -A "--serial4=uart:/tmp/orientus_rx"
+-------------------------------------------------------------------------------------------------------------------------------------------------
+15) params:
+cat > /tmp/orientus_test.parm << 'EOF'
+EAHRS_TYPE 12
+SERIAL4_PROTOCOL 36
+SERIAL4_BAUD 2000
+AHRS_EKF_TYPE 11
+EK3_ENABLE 0
+EOF
+16) Tools/autotest/sim_vehicle.py -v ArduSub -f vectored --no-rebuild --console --add-param-file=/tmp/orientus_test.parm -A "--serial4=uart:/dev/ttyUSB0:2000000"
+17) module load graph => graph degrees(ATTITUDE.roll) degrees(ATTITUDE.pitch) degrees(ATTITUDE.yaw)
