@@ -39,6 +39,7 @@ def main():
     
     slam_map = Map()
     slam_map.start_dash_server()
+    slam_map.start_frame_server()
     start_param_server()
 
     backend = Backend(params_stereo=Frame.params, map=slam_map)
