@@ -1,9 +1,11 @@
 # Implementation of the Map class
+import base64
 import json
 import os
 import open3d as o3d
 import threading
 import time
+import cv2 as cv
 import numpy as np
 import plotly.graph_objects as go
 from dash import Dash, dcc, html
@@ -35,6 +37,33 @@ class Map:
         self.current_frame_ = None
 
         self.data_mutex_ = threading.Lock()
+
+        self.display_frame_ = None
+        self.display_mutex_ = threading.Lock()
+
+    def set_display_frame(self, frame):
+        with self.display_mutex_:
+            self.display_frame_ = frame
+
+    def _get_display_snapshot(self):
+        with self.display_mutex_:
+            f = self.display_frame_
+            if f is None:
+                return None, [], None
+            img = getattr(f, 'color_left_img_', None)
+            if img is None:
+                img = getattr(f, 'clean_left_img_', None)
+            if img is None:
+                img = getattr(f, 'left_img_', None)
+            features = list(f.features_left_)
+            frame_id = f.id_
+        pts = [
+            (int(feat.position_.pt[0]), int(feat.position_.pt[1]),
+             feat.map_point_ is not None and not feat.is_outlier_)
+            for feat in features
+            if feat.position_ is not None
+        ]
+        return img, pts, frame_id
 
     def insert_keyframes(self, frame):
 
@@ -148,6 +177,57 @@ class Map:
         )
         dash_thread.start()
         print("[Map] Dash server started at http://0.0.0.0:8050")
+
+    # ------------------------------------------------------------------
+    # Dash live 2-D frame viewer (current frame + landmark overlay)
+    # ------------------------------------------------------------------
+
+    def start_frame_server(self, port=8052):
+        self.frame_app = Dash(__name__ + '_frames')
+        self.frame_app.layout = html.Div([
+            html.H2("SLAM - Current Frame"),
+            html.Div(id='frame-header'),
+            html.Img(id='frame-img', style={'width': '100%', 'imageRendering': 'pixelated'}),
+            dcc.Interval(id='frame-interval', interval=500, n_intervals=0),
+        ])
+
+        @self.frame_app.callback(
+            [Output('frame-img', 'src'),
+             Output('frame-header', 'children')],
+            Input('frame-interval', 'n_intervals'),
+        )
+        def update_frame(_):
+            img, pts, frame_id = self._get_display_snapshot()
+            if img is None:
+                return '', 'Waiting for first frame...'
+
+            if img.ndim == 2:
+                vis = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
+            else:
+                vis = img.copy()
+
+            n_landmarks = 0
+            for x, y, has_mp in pts:
+                if has_mp:
+                    cv.circle(vis, (x, y), 4, (0, 255, 0), -1)
+                    n_landmarks += 1
+                else:
+                    cv.circle(vis, (x, y), 2, (0, 0, 255), 1)
+
+            ok, buf = cv.imencode('.jpg', vis, [cv.IMWRITE_JPEG_QUALITY, 80])
+            if not ok:
+                return '', 'JPEG encoding failed'
+            b64 = base64.b64encode(buf.tobytes()).decode('ascii')
+            header = f'Frame {frame_id} — {n_landmarks}/{len(pts)} landmarks'
+            return f'data:image/jpeg;base64,{b64}', header
+
+        frame_thread = threading.Thread(
+            target=self.frame_app.run,
+            kwargs={'host': '0.0.0.0', 'port': port, 'debug': False},
+            daemon=True
+        )
+        frame_thread.start()
+        print(f"[Map] Frame server started at http://0.0.0.0:{port}")
 
     def _build_figure(self):
         keyframes = self.get_all_keyframes()

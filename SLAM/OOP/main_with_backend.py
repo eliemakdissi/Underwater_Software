@@ -45,6 +45,7 @@ def main():
 
     slam_map = Map()
     slam_map.start_dash_server()
+    slam_map.start_frame_server()
     start_param_server()
 
     backend = Backend(params_stereo=Frame.params, map= slam_map)
@@ -92,7 +93,7 @@ def main():
 
     save_point_cloud_ply("map_optimisee.ply", xyz_clean)
 
-    print(f"\n--- Processing complete. Live plot at http://0.0.0.0:8050 ---")
+    print(f"\n--- Processing complete. 3D plot at http://0.0.0.0:8050, frame feed at http://0.0.0.0:8052 ---")
     print("Press Ctrl+C to exit.")
     try:
         while True:

@@ -50,6 +50,7 @@ class Frontend():
             self.reset()
             success = self.stero_init()
 
+        self.map_.set_display_frame(self.current_frame_)
         self.previous_frame_ = self.current_frame_
         return success
 
