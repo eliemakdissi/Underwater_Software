@@ -47,8 +47,8 @@ def main():
 
     # pipe_l = "udpsrc port=5000 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false"
     # pipe_r = "udpsrc port=5001 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false"
-    pipe_l = "SLAM/data_sortie_mer/deuxieme_sortie/sortie mer 2-2-20260424T090434Z-3-001/sortie mer 2-2/sortie_left.mp4"
-    pipe_r = "SLAM/data_sortie_mer/deuxieme_sortie/sortie mer 2-2-20260424T090434Z-3-001/sortie mer 2-2/sortie_right.mp4"
+    pipe_l = "SLAM/images_test/set_4_caillou/2026-04-15_14-52-14_left.mp4"
+    pipe_r = "SLAM/images_test/set_4_caillou/2026-04-15_14-52-14_right.mp4"
 
     stream_l = Camera(pipe_l, "Cam_Gauche")
     stream_r = Camera(pipe_r, "Cam_Droite")
