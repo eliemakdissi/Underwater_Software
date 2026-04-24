@@ -52,6 +52,19 @@ class Map:
             return True
         return False
 
+    def save_ply(self, path):
+        with self.data_mutex_:
+            mps = [mp for mp in self.landmarks_.values() if not mp.is_outlier_]
+        if not mps:
+            return 0
+        positions = np.array([mp.pos_ for mp in mps], dtype=np.float64)
+        colors = np.array([mp.color_ for mp in mps], dtype=np.uint8)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(positions)
+        pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64) / 255.0)
+        o3d.io.write_point_cloud(path, pcd, write_ascii=False)
+        return len(mps)
+
     def reset(self):
         with self.data_mutex_:
             self.landmarks_.clear()
@@ -70,21 +83,32 @@ class Map:
         with self.display_mutex_:
             f = self.display_frame_
             if f is None:
-                return None, [], None
-            img = getattr(f, 'color_left_img_', None)
-            if img is None:
-                img = getattr(f, 'clean_left_img_', None)
-            if img is None:
-                img = getattr(f, 'left_img_', None)
-            features = list(f.features_left_)
+                return None, [], None, None, []
+            img_l = getattr(f, 'color_left_img_', None)
+            if img_l is None:
+                img_l = getattr(f, 'clean_left_img_', None)
+            if img_l is None:
+                img_l = getattr(f, 'left_img_', None)
+            img_r = getattr(f, 'color_right_img_', None)
+            if img_r is None:
+                img_r = getattr(f, 'clean_right_img_', None)
+            if img_r is None:
+                img_r = getattr(f, 'right_img_', None)
+            features_l = list(f.features_left_)
+            features_r = list(f.features_right_)
             frame_id = f.id_
-        pts = [
+        pts_l = [
             (int(feat.position_.pt[0]), int(feat.position_.pt[1]),
              feat.map_point_ is not None and not feat.is_outlier_)
-            for feat in features
+            for feat in features_l
             if feat.position_ is not None
         ]
-        return img, pts, frame_id
+        pts_r = [
+            (int(feat.position_.pt[0]), int(feat.position_.pt[1]))
+            for feat in features_r
+            if feat.position_ is not None
+        ]
+        return img_l, pts_l, frame_id, img_r, pts_r
 
     def insert_keyframes(self, frame):
 
@@ -156,6 +180,11 @@ class Map:
                                    'backgroundColor': '#c0392b', 'border': 'none',
                                    'padding': '4px 12px', 'cursor': 'pointer'}),
                 html.Span(id='reset-map-status', style={'marginLeft': '10px'}),
+                html.Button("Save PLY", id='save-ply-btn', n_clicks=0,
+                            style={'marginLeft': '20px', 'color': 'white',
+                                   'backgroundColor': '#27ae60', 'border': 'none',
+                                   'padding': '4px 12px', 'cursor': 'pointer'}),
+                html.Span(id='save-ply-status', style={'marginLeft': '10px'}),
             ], style={'marginBottom': '8px'}),
             dcc.Graph(id='slam-3d', style={'height': '85vh'}),
             dcc.Store(id='camera-store', data=_load_saved_camera()),
@@ -205,6 +234,21 @@ class Map:
             self.request_reset()
             return f"Reset requested at {time.strftime('%H:%M:%S')}"
 
+        @self.dash_app.callback(
+            Output('save-ply-status', 'children'),
+            Input('save-ply-btn', 'n_clicks'),
+            prevent_initial_call=True,
+        )
+        def save_ply(_n):
+            path = f"slam_map_{time.strftime('%Y%m%d_%H%M%S')}.ply"
+            try:
+                n = self.save_ply(path)
+            except Exception as e:
+                return f"Error: {e}"
+            if n == 0:
+                return "No map points to save."
+            return f"Saved {n} points to {path}"
+
         dash_thread = threading.Thread(
             target=self.dash_app.run,
             kwargs={'host': '0.0.0.0', 'port': 8050, 'debug': False},
@@ -220,7 +264,7 @@ class Map:
     def start_frame_server(self, port=8052):
         self.frame_app = Dash(__name__ + '_frames')
         self.frame_app.layout = html.Div([
-            html.H2("SLAM - Current Frame"),
+            html.H2("SLAM - Current Frame (Left | Right)"),
             html.Div(id='frame-header'),
             html.Img(id='frame-img', style={'width': '100%', 'imageRendering': 'pixelated'}),
             dcc.Interval(id='frame-interval', interval=500, n_intervals=0),
@@ -232,28 +276,43 @@ class Map:
             Input('frame-interval', 'n_intervals'),
         )
         def update_frame(_):
-            img, pts, frame_id = self._get_display_snapshot()
-            if img is None:
+            img_l, pts_l, frame_id, img_r, pts_r = self._get_display_snapshot()
+            if img_l is None:
                 return '', 'Waiting for first frame...'
 
-            if img.ndim == 2:
-                vis = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
-            else:
-                vis = img.copy()
+            def _to_bgr(im):
+                return cv.cvtColor(im, cv.COLOR_GRAY2BGR) if im.ndim == 2 else im.copy()
 
+            vis_l = _to_bgr(img_l)
             n_landmarks = 0
-            for x, y, has_mp in pts:
+            for x, y, has_mp in pts_l:
                 if has_mp:
-                    cv.circle(vis, (x, y), 4, (0, 255, 0), -1)
+                    cv.circle(vis_l, (x, y), 4, (0, 255, 0), -1)
                     n_landmarks += 1
                 else:
-                    cv.circle(vis, (x, y), 2, (0, 0, 255), 1)
+                    cv.circle(vis_l, (x, y), 2, (0, 0, 255), 1)
+            cv.putText(vis_l, 'LEFT', (10, 30), cv.FONT_HERSHEY_SIMPLEX,
+                       1.0, (0, 255, 255), 2, cv.LINE_AA)
+
+            if img_r is not None:
+                vis_r = _to_bgr(img_r)
+                if vis_r.shape[:2] != vis_l.shape[:2]:
+                    vis_r = cv.resize(vis_r, (vis_l.shape[1], vis_l.shape[0]))
+                for x, y in pts_r:
+                    cv.circle(vis_r, (x, y), 2, (255, 128, 0), 1)
+                cv.putText(vis_r, 'RIGHT', (10, 30), cv.FONT_HERSHEY_SIMPLEX,
+                           1.0, (0, 255, 255), 2, cv.LINE_AA)
+                vis = cv.hconcat([vis_l, vis_r])
+            else:
+                vis = vis_l
 
             ok, buf = cv.imencode('.jpg', vis, [cv.IMWRITE_JPEG_QUALITY, 80])
             if not ok:
                 return '', 'JPEG encoding failed'
             b64 = base64.b64encode(buf.tobytes()).decode('ascii')
-            header = f'Frame {frame_id} — {n_landmarks}/{len(pts)} landmarks'
+            n_r = len(pts_r) if img_r is not None else 0
+            header = (f'Frame {frame_id} — left: {n_landmarks}/{len(pts_l)} landmarks '
+                      f'| right: {n_r} features')
             return f'data:image/jpeg;base64,{b64}', header
 
         frame_thread = threading.Thread(
