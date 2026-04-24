@@ -5,7 +5,7 @@ import time
 import open3d as o3d
 
 import Params
-from Frame import Frame
+from Frame_without_rectify import Frame
 from Map import Map
 from MapPoint import MapPoint
 from Backend import Backend

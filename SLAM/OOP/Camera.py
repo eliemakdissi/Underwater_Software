@@ -24,6 +24,11 @@ class Camera:
         print(f"[{self.name}] Flux démarré.")
 
     def update(self):
+        fps = self.cap.get(cv.CAP_PROP_FPS) if self.cap.isOpened() else 0.0
+        period = 1.0 / fps if 1.0 < fps < 240.0 else 0.0
+        if period > 0:
+            print(f"[{self.name}] Source FPS={fps:.2f}, throttling decoder to real time.")
+        next_tick = time.time()
         while self.running:
             if self.cap.isOpened():
                 ret, frame = self.cap.read()
@@ -31,6 +36,13 @@ class Camera:
                     self.ret = ret
                     if ret:
                         self.frame = frame
+                if period > 0:
+                    next_tick += period
+                    sleep_t = next_tick - time.time()
+                    if sleep_t > 0:
+                        time.sleep(sleep_t)
+                    else:
+                        next_tick = time.time()
 
     def read(self): # Fonction qu'appelle le SLAM
         with self._pose_mutex:
