@@ -41,6 +41,27 @@ class Map:
         self.display_frame_ = None
         self.display_mutex_ = threading.Lock()
 
+        self._reset_event = threading.Event()
+
+    def request_reset(self):
+        self._reset_event.set()
+
+    def consume_reset_request(self):
+        if self._reset_event.is_set():
+            self._reset_event.clear()
+            return True
+        return False
+
+    def reset(self):
+        with self.data_mutex_:
+            self.landmarks_.clear()
+            self.active_landmarks_.clear()
+            self.keyframes_.clear()
+            self.active_keyframes_.clear()
+            self.current_frame_ = None
+        with self.display_mutex_:
+            self.display_frame_ = None
+
     def set_display_frame(self, frame):
         with self.display_mutex_:
             self.display_frame_ = frame
@@ -130,6 +151,11 @@ class Map:
             html.Div([
                 html.Button("Save view", id='save-view-btn', n_clicks=0),
                 html.Span(id='save-view-status', style={'marginLeft': '10px'}),
+                html.Button("Reset map", id='reset-map-btn', n_clicks=0,
+                            style={'marginLeft': '20px', 'color': 'white',
+                                   'backgroundColor': '#c0392b', 'border': 'none',
+                                   'padding': '4px 12px', 'cursor': 'pointer'}),
+                html.Span(id='reset-map-status', style={'marginLeft': '10px'}),
             ], style={'marginBottom': '8px'}),
             dcc.Graph(id='slam-3d', style={'height': '85vh'}),
             dcc.Store(id='camera-store', data=_load_saved_camera()),
@@ -169,6 +195,15 @@ class Map:
                 return f"View saved at {time.strftime('%H:%M:%S')}"
             except OSError as e:
                 return f"Error: {e}"
+
+        @self.dash_app.callback(
+            Output('reset-map-status', 'children'),
+            Input('reset-map-btn', 'n_clicks'),
+            prevent_initial_call=True,
+        )
+        def reset_map(_n):
+            self.request_reset()
+            return f"Reset requested at {time.strftime('%H:%M:%S')}"
 
         dash_thread = threading.Thread(
             target=self.dash_app.run,

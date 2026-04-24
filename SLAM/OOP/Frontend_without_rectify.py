@@ -37,6 +37,9 @@ class Frontend():
         self.matcher = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
 
     def add_frame(self, frame: Frame):
+        if self.map_.consume_reset_request():
+            self._apply_reset()
+
         self.current_frame_ = frame
         success = False
 
@@ -294,6 +297,17 @@ class Frontend():
         self.status_ = FrontendStatus.INITING
         self.previous_frame_ = None
         return True
+
+    def _apply_reset(self):
+        print("[Frontend] User-requested map reset")
+        if self._backend_thread is not None and self._backend_thread.is_alive():
+            self._backend_thread.join()
+        self.map_.reset()
+        self.status_ = FrontendStatus.INITING
+        self.current_frame_ = None
+        self.previous_frame_ = None
+        self.last_keyframe_ = None
+        self.num_frames_since_last_kf_ = 0
 
     def need_new_keyframe(self, num_inliers, num_previous_pts):
         #ratio_survie = num_inliers / max(1, num_previous_pts)
