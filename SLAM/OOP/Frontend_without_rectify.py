@@ -387,7 +387,7 @@ class Frontend():
             cand_entry = self.loop_db.get_keyframe(cand_id)
             if cand_entry is None:
                 continue
-            if score < 0.2:
+            if score < 0.85:
                 continue
             if not _verify_loop_geometrically(words, cand_entry["words"]):
                 continue
