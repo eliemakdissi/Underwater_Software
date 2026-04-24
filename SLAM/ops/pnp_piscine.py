@@ -10,7 +10,7 @@ from generate_dense_cloud import generate_dense_cloud
 lowe = 0.7
 
 
-CALIB_STEREO = 'SLAM/calibration/param/stereo_params_complets.pkl' 
+CALIB_STEREO = 'SLAM/calibration/param/stereo_a_lenvers.pkl' 
 with open(CALIB_STEREO, 'rb') as f:
     params = pickle.load(f)
 
@@ -54,7 +54,8 @@ for i in range (2409,2420) :
     pts_3D_pnp = np.array(previous3d[mask1], dtype=np.float32)
     pts_2D_pnp = np.array(current2d[mask2], dtype=np.float32)
 
-    succes, rvec, tvec, inliers = cv.solvePnPRansac(objectPoints=pts_3D_pnp, imagePoints=pts_2D_pnp, cameraMatrix=K_rect, distCoeffs=dist_zero, flags=cv.SOLVEPNP_ITERATIVE)
+    succes, rvec, tvec, inliers = cv.solvePnPRansac(objectPoints=pts_3D_pnp, imagePoints=pts_2D_pnp, cameraMatrix=K_rect, distCoeffs=dist_zero, iterationsCount=100,
+                reprojectionError=3.0, flags=cv.SOLVEPNP_ITERATIVE)
 
     if succes : 
         distance_parcourue = np.linalg.norm(tvec)
