@@ -6,7 +6,7 @@ import time
 import open3d as o3d
 
 import Params
-from Frame import Frame
+from Frame_without_rectify import Frame
 from Map import Map
 from MapPoint import MapPoint
 from Backend import Backend
@@ -67,6 +67,9 @@ class Frontend():
             print(f"[Frontend] Loop closure disabled — vocab file not found at {vocab_path}")
 
     def add_frame(self, frame: Frame):
+        if self.map_.consume_reset_request():
+            self._apply_reset()
+
         self.current_frame_ = frame
         success = False
 
@@ -324,6 +327,17 @@ class Frontend():
         self.status_ = FrontendStatus.INITING
         self.previous_frame_ = None
         return True
+
+    def _apply_reset(self):
+        print("[Frontend] User-requested map reset")
+        if self._backend_thread is not None and self._backend_thread.is_alive():
+            self._backend_thread.join()
+        self.map_.reset()
+        self.status_ = FrontendStatus.INITING
+        self.current_frame_ = None
+        self.previous_frame_ = None
+        self.last_keyframe_ = None
+        self.num_frames_since_last_kf_ = 0
 
     def need_new_keyframe(self, num_inliers, num_previous_pts):
         #ratio_survie = num_inliers / max(1, num_previous_pts)

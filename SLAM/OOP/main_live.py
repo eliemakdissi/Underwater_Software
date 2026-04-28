@@ -45,8 +45,10 @@ def main():
     backend = Backend(params_stereo=Frame.params, map=slam_map)
     frontend = Frontend(params_stereo_=Frame.params, map=slam_map, backend=backend)
 
-    pipe_l = "udpsrc port=5000 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false"
-    pipe_r = "udpsrc port=5001 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false"
+    # pipe_l = "udpsrc port=5000 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false"
+    # pipe_r = "udpsrc port=5001 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false"
+    pipe_l = "SLAM/images_test/set_4_caillou/2026-04-15_14-52-14_left.mp4"
+    pipe_r = "SLAM/images_test/set_4_caillou/2026-04-15_14-52-14_right.mp4"
 
     stream_l = Camera(pipe_l, "Cam_Gauche")
     stream_r = Camera(pipe_r, "Cam_Droite")
