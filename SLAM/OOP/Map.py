@@ -43,6 +43,8 @@ class Map:
 
         self.loop_closure_kfs_ = set()
 
+        self._reset_event = threading.Event()
+
     def mark_loop_closure(self, kf_id_a, kf_id_b):
         with self.data_mutex_:
             self.loop_closure_kfs_.add(kf_id_a)
@@ -51,7 +53,6 @@ class Map:
     def get_loop_closure_kfs(self):
         with self.data_mutex_:
             return set(self.loop_closure_kfs_)
-        self._reset_event = threading.Event()
 
     def request_reset(self):
         self._reset_event.set()
