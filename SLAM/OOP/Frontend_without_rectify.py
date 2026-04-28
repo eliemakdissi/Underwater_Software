@@ -16,10 +16,6 @@ import faulthandler
 faulthandler.enable()
 
 
-def _verify_loop_geometrically(words_a, words_b, min_common_words=15):
-    return len(set(words_a) & set(words_b)) >= min_common_words
-
-
 def _count_vocab_leaves(tree):
     leaves = []
     def _walk(n):
@@ -378,19 +374,31 @@ class Frontend():
 
     def _loop_closure_step(self):
         kf = self.current_frame_
-        descs = [
-            np.asarray(f.descriptor_, dtype=np.float32)
-            for f in kf.features_left_
-            if f.descriptor_ is not None and np.shape(f.descriptor_) == (128,)
+
+        # Collect features with valid 128-D SIFT descriptors and their pixel coords.
+        valid_feats = [
+            f for f in kf.features_left_
+            if f.descriptor_ is not None
+            and np.shape(f.descriptor_) == (128,)
+            and f.position_ is not None
         ]
-        if len(descs) == 0:
+        if len(valid_feats) == 0:
             return
 
-        words = self.vocab_tree.transform(np.stack(descs))
+        descs = np.stack([np.asarray(f.descriptor_, dtype=np.float32)
+                          for f in valid_feats])
+        kpts = np.array([f.position_.pt for f in valid_feats], dtype=np.float32)
+
+        words = self.vocab_tree.transform(descs)
         if len(words) == 0:
             return
 
-        kf_entry = {"id": kf.id_, "words": words}
+        kf_entry = {
+            "id": kf.id_,
+            "words": words,
+            "kpts": kpts,    # (N, 2) float32
+            "desc": descs,   # (N, 128) float32
+        }
 
         candidates = self.loop_db.find_loop_candidates(
             words, current_kf_id=kf.id_, min_temporal_distance=10, top_k=3
@@ -399,13 +407,17 @@ class Frontend():
         verified = []
         for cand_id, score in candidates:
             cand_entry = self.loop_db.get_keyframe(cand_id)
-            if cand_entry is None:
+            if cand_entry is None or "desc" not in cand_entry:
                 continue
             if score < 0.85:
                 continue
-            if not _verify_loop_geometrically(words, cand_entry["words"]):
+            n_inliers = self._verify_loop_ransac(
+                kpts, descs, cand_entry["kpts"], cand_entry["desc"]
+            )
+            if n_inliers < 20:
                 continue
-            print(f"[LOOP CLOSURE] Loop detected between KF_{kf.id_} and KF_{cand_id} (score={score:.3f})")
+            print(f"[LOOP CLOSURE] Loop detected KF_{kf.id_} <-> KF_{cand_id} "
+                  f"(score={score:.3f}, RANSAC inliers={n_inliers})")
             self.map_.mark_loop_closure(kf.id_, cand_id)
             verified.append((kf.id_, cand_id))
 
@@ -413,6 +425,40 @@ class Frontend():
 
         if verified and self.backend_ is not None:
             self.backend_.add_loop_constraints(verified)
+
+    def _verify_loop_ransac(self, kpts_q, desc_q, kpts_c, desc_c,
+                            ratio=0.75, ransac_thresh=3.0, min_for_ransac=20):
+        """Real geometric verification: match descriptors between query and
+        candidate keyframes, then require their matches to fit a single
+        fundamental matrix under RANSAC. Returns the inlier count (0 if the
+        check fails before RANSAC even runs)."""
+        if (desc_q is None or desc_c is None
+                or len(desc_q) < min_for_ransac
+                or len(desc_c) < min_for_ransac):
+            return 0
+        try:
+            knn = self.matcher.knnMatch(desc_q.astype(np.float32, copy=False),
+                                         desc_c.astype(np.float32, copy=False),
+                                         k=2)
+        except cv.error:
+            return 0
+
+        pts_q = []
+        pts_c = []
+        for m in knn:
+            if len(m) == 2 and m[0].distance < m[1].distance * ratio:
+                pts_q.append(kpts_q[m[0].queryIdx])
+                pts_c.append(kpts_c[m[0].trainIdx])
+        if len(pts_q) < min_for_ransac:
+            return len(pts_q)
+
+        pts_q = np.float32(pts_q)
+        pts_c = np.float32(pts_c)
+        F, mask = cv.findFundamentalMat(pts_q, pts_c,
+                                        cv.FM_RANSAC, ransac_thresh, 0.99)
+        if F is None or mask is None:
+            return 0
+        return int(mask.sum())
 
     def create_new_landmarks(self):
         features_l = self.current_frame_.features_left_
