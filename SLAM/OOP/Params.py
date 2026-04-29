@@ -17,6 +17,12 @@ DEFAULTS = {
     'sor_nb_neighbors': 15,
     'sor_std_ratio': 0.1,
 
+    # Stereo pair quality filter (rejects desynced / inconsistent L/R pairs
+    # against the calibration-derived static fundamental matrix).
+    'stereo_max_median_residual_px': 2.0,
+    'stereo_min_inlier_ratio': 0.4,
+    'stereo_inlier_residual_px': 4.0,
+
     # Keyframe triggers
     'kf_min_inliers': 50,
     'kf_max_frames': 15,

@@ -16,6 +16,34 @@ import faulthandler
 faulthandler.enable()
 
 
+def _stereo_pair_quality(pts_l, pts_r, F_static,
+                         max_median_residual_px,
+                         min_inlier_ratio,
+                         inlier_residual_px):
+    """Symmetric line-distance epipolar consistency of paired pixel
+    coordinates against the calibration-derived fundamental matrix.
+
+    Returns (ok: bool, n_inliers: int, median_residual_px: float).
+    A pair is OK iff median residual is below max_median_residual_px AND
+    the fraction of matches with residual < inlier_residual_px is at
+    least min_inlier_ratio.
+    """
+    if len(pts_l) < 10:
+        return False, 0, float('inf')
+    pts_l_h = np.hstack([pts_l, np.ones((len(pts_l), 1))])
+    pts_r_h = np.hstack([pts_r, np.ones((len(pts_r), 1))])
+    lines_r = (F_static @ pts_l_h.T).T
+    num = np.abs(np.einsum('ij,ij->i', lines_r, pts_r_h))
+    den = np.sqrt(lines_r[:, 0] ** 2 + lines_r[:, 1] ** 2 + 1e-12)
+    residuals = num / den
+    median_res = float(np.median(residuals))
+    n_inliers = int((residuals < inlier_residual_px).sum())
+    inlier_ratio = n_inliers / len(residuals)
+    ok = (median_res < max_median_residual_px
+          and inlier_ratio >= min_inlier_ratio)
+    return ok, n_inliers, median_res
+
+
 def _count_vocab_leaves(tree):
     leaves = []
     def _walk(n):
@@ -152,6 +180,21 @@ class Frontend():
         print(f'{t3-t2}s : matching desc')
         print(f'{t4-t3}s : test lowe')
         print(f'{t5-t4}s : ransac essential')
+
+        ok, n_in, med = _stereo_pair_quality(
+            pts_l_good, pts_r_good, Frame.F_static,
+            max_median_residual_px=Params.get('stereo_max_median_residual_px'),
+            min_inlier_ratio=Params.get('stereo_min_inlier_ratio'),
+            inlier_residual_px=Params.get('stereo_inlier_residual_px'),
+        )
+        if not ok:
+            print(f"[STEREO QUALITY] init pair REJECTED — "
+                  f"median epipolar residual={med:.2f} px, "
+                  f"inliers={n_in}/{len(pts_l_good)}")
+            return False
+        print(f"[STEREO QUALITY] init pair OK — "
+              f"median residual={med:.2f} px, "
+              f"inliers={n_in}/{len(pts_l_good)}")
 
         # Triangulation
         
@@ -527,6 +570,21 @@ class Frontend():
 
         idx_l_bruts_arr = np.array(idx_l_bruts_temp)
         idx_l_bruts = idx_l_bruts_arr[mask].tolist()
+
+        ok, n_in, med = _stereo_pair_quality(
+            pts_l_good, pts_r_good, Frame.F_static,
+            max_median_residual_px=Params.get('stereo_max_median_residual_px'),
+            min_inlier_ratio=Params.get('stereo_min_inlier_ratio'),
+            inlier_residual_px=Params.get('stereo_inlier_residual_px'),
+        )
+        if not ok:
+            print(f"[STEREO QUALITY] new-landmarks pair REJECTED — "
+                  f"median epipolar residual={med:.2f} px, "
+                  f"inliers={n_in}/{len(pts_l_good)}")
+            return
+        print(f"[STEREO QUALITY] new-landmarks pair OK — "
+              f"median residual={med:.2f} px, "
+              f"inliers={n_in}/{len(pts_l_good)}")
 
         # Triangulation directe avec K1 et K2 car on a des pixels.
         P1_unrect = K1 @ np.hstack((np.eye(3), np.zeros((3, 1))))

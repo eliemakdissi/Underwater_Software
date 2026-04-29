@@ -7,10 +7,29 @@ import pickle
 import Params
 from Feature import Feature
 
+def _build_static_F(params):
+    """Static fundamental matrix derived from calibration, valid on the
+    *undistorted* left/right images produced by Frame.preprocess. Used by
+    Frontend's per-pair quality filter to reject desynced stereo pairs."""
+    K1 = params['mtx1']
+    K2 = params['mtx2']
+    R = params['R']
+    T = np.asarray(params['T']).reshape(3)
+    Tx = np.array([
+        [0.0, -T[2], T[1]],
+        [T[2], 0.0, -T[0]],
+        [-T[1], T[0], 0.0],
+    ])
+    F = np.linalg.inv(K2).T @ Tx @ R @ np.linalg.inv(K1)
+    return F.astype(np.float64)
+
+
 class Frame:
 
     with open('SLAM/calibration/param/stereo_a_lenvers.pkl', 'rb') as f:
         params = pickle.load(f)
+
+    F_static = _build_static_F(params)  # 3x3 fundamental matrix
 
     # Preprocessing
     '''
