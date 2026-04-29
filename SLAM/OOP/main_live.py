@@ -9,7 +9,14 @@ from Map import Map
 from Frame_without_rectify import Frame
 from Frontend_without_rectify import Frontend
 from ParamServer import start_param_server
-from Camera import Camera #
+from Camera import Camera, StereoRecorder #
+
+# Toggle to save every (left, right) pair processed by SLAM into two MP4
+# files under recordings/. Lets you check inter-camera desync afterwards
+# by replaying the pair (e.g. with stereo_monitor.py).
+RECORD_PAIRS = True
+RECORD_DIR = "recordings"
+RECORD_FPS = 30.0
 
 BACKEND_TYPE = "g2o"
 
@@ -52,7 +59,10 @@ def main():
 
     stream_l = Camera(pipe_l, "Cam_Gauche")
     stream_r = Camera(pipe_r, "Cam_Droite")
-    time.sleep(2.0) 
+    time.sleep(2.0)
+
+    recorder = (StereoRecorder(output_dir=RECORD_DIR, fps=RECORD_FPS)
+                if RECORD_PAIRS else None)
 
     frame_id = 0
     print("\n--- Début du Tracking Live. Appuyez sur Ctrl+C dans le terminal pour arrêter et générer la carte. ---")
@@ -67,6 +77,9 @@ def main():
             if not ret_l or not ret_r or img_l is None or img_r is None:
                 time.sleep(0.01)
                 continue
+
+            if recorder is not None:
+                recorder.write(img_l, img_r)
 
             # time.time() - timestamp absolu pour la Frame
             current_frame = Frame.create_frame(time_stamp=time.time(), left_img=img_l, right_img=img_r)
@@ -85,6 +98,8 @@ def main():
         print("\nFermeture des caméras...")
         stream_l.stop()
         stream_r.stop()
+        if recorder is not None:
+            recorder.stop()
 
         print("Génération de la carte 3D finale...")
         time.sleep(2.0)
