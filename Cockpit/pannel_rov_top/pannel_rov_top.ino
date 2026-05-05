@@ -26,28 +26,30 @@ int prev_val_a3;
 int n_lines, padding;
 float fspacing;
 
-/*// Gamepad Report Descriptor Template
+// Gamepad Report Descriptor Template
 #define TUD_HID_REPORT_MY_GAMEPAD(...) \
   HID_USAGE_PAGE ( HID_USAGE_PAGE_DESKTOP     )                 ,\
   HID_USAGE      ( HID_USAGE_DESKTOP_GAMEPAD  )                 ,\
   HID_COLLECTION ( HID_COLLECTION_APPLICATION )                 ,\
-    /* Report ID if any *\
+    /* Report ID if any */\
     __VA_ARGS__ \
-    /* 8 bit X, Y, Z, Rz, Rx, Ry (min -127, max 127 ) * \
+    /* 8 bit X, Y, Z, Rz, Rx, Ry (min -127, max 127 ) */ \
     HID_USAGE_PAGE     ( HID_USAGE_PAGE_DESKTOP                 ) ,\
     HID_USAGE          ( HID_USAGE_DESKTOP_X                    ) ,\
     HID_USAGE          ( HID_USAGE_DESKTOP_Y                    ) ,\
     HID_USAGE          ( HID_USAGE_DESKTOP_Z                    ) ,\
-    HID_USAGE          ( HID_USAGE_DESKTOP_SLIDER               ) ,\
+    HID_USAGE          ( HID_USAGE_DESKTOP_RX                   ) ,\
+    HID_USAGE          ( HID_USAGE_DESKTOP_RY                   ) ,\
+    HID_USAGE          ( HID_USAGE_DESKTOP_RZ                   ) ,\
     HID_LOGICAL_MIN    ( 0x81                                   ) ,\
     HID_LOGICAL_MAX    ( 0x7f                                   ) ,\
     HID_REPORT_SIZE    ( 8                                      ) ,\
-    HID_REPORT_COUNT   ( 4                                      ) ,\
+    HID_REPORT_COUNT   ( 6                                      ) ,\
     HID_INPUT          ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ) ,\
-    /* 3 bit Button Map * \
+    /* 3 bit Button Map */ \
     HID_USAGE_PAGE     ( HID_USAGE_PAGE_BUTTON                  ) ,\
     HID_USAGE_MIN      ( 1                                      ) ,\
-    HID_USAGE_MAX      ( 3                                      ) ,\
+    HID_USAGE_MAX      ( 5                                      ) ,\
     HID_LOGICAL_MIN    ( 0                                      ) ,\
     HID_LOGICAL_MAX    ( 1                                      ) ,\
     HID_REPORT_SIZE    ( 1                                      ) ,\
@@ -63,14 +65,16 @@ uint8_t const desc_hid_report[] = {
 };
 
 struct descriptor{
-  int8_t  jx;      // Thumb joystick X
-  int8_t  jy;      // Thumb joystick Y
-  int8_t  yaw;     // Yaw command
-  int8_t  wheel;   // Tilt wheel
-  uint8_t buttons; // Buttons 
+  int8_t  gtrans;    // Translation gain
+  int8_t  gyaw;      // Yaw gain
+  int8_t  trim_x;    
+  int8_t  trim_y;    
+  int8_t  trim_z;    
+  int8_t  trim_yaw;  
+  uint8_t buttons;   // Buttons 
 };
 
-descriptor gp;*/
+descriptor gp;
 
 
 //==== LEDS ====//
@@ -142,13 +146,13 @@ IRAM_ATTR void update_enc2() {
 unsigned long timer;
 
 void setup() {
-  /*TinyUSBDevice.setManufacturerDescriptor("Underwater");
-  TinyUSBDevice.setProductDescriptor("2026_ROV_bottom");
+  TinyUSBDevice.setManufacturerDescriptor("Underwater");
+  TinyUSBDevice.setProductDescriptor("2026_ROV_top");
 
   // Manual begin() is required on core without built-in support e.g. mbed rp2040
   if (!TinyUSBDevice.isInitialized()) {
     TinyUSBDevice.begin(0);
-  }*/
+  }
 
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -189,25 +193,25 @@ void setup() {
   padding = 10;
   fspacing = (display.height() - padding) / float(n_lines);
 
-  /*// Setup HID
+  // Setup HID
   usb_hid.setPollInterval(2);
   usb_hid.setReportDescriptor(desc_hid_report, sizeof(desc_hid_report));
   usb_hid.begin();
 
-  // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
+  // If already enumerated, additional class driver begin() e.g msc, hid, midi won't take effect until re-enumeration
   if (TinyUSBDevice.mounted()) {
     TinyUSBDevice.detach();
     delay(10);
     TinyUSBDevice.attach();
-  }*/
+  }
 
 
   timer = millis();
 
 
   // startup screen
-  logo_minotaure();
-  logo_mines();
+  //logo_minotaure();
+  //logo_mines();
   background();
   show_epd();
   display.hibernate();
@@ -218,7 +222,7 @@ float mapfloat(float x, float in_min, float in_max, float out_min, float out_max
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-int convert(int input, int min, int max) {
+int8_t convert(int input, int min, int max) {
   float val = mapfloat(input, min*NB_SAMPLE, max*NB_SAMPLE, -1, 1) / range;
   val = val > deadzone ? val - deadzone : (val < -deadzone ? val + deadzone : 0);
   val /= (1 - deadzone);
@@ -240,11 +244,6 @@ void wait(unsigned long delay) {
 void read_and_show_leds(const void *arg) {
   if(micros() < timer) return;
   timer += PERIOD;
-
-  /*if (!TinyUSBDevice.mounted()) {
-    return;
-  }
-  if (!usb_hid.ready()) return;*/
   
   bool sw0 = digitalRead(SW0);
   bool sw1 = digitalRead(SW1);
@@ -281,21 +280,12 @@ void read_and_show_leds(const void *arg) {
   }
 
   int enc_pos1 = enc1->getPosition();
-  gain1 = constrain(gain1 + (enc_pos1 - prev_pos1), 0, 4);
+  gain1 = constrain(gain1 + (enc_pos1 - prev_pos1), 0, 8);
   prev_pos1 = enc_pos1;
 
   int enc_pos2 = enc2->getPosition();
-  gain2 = constrain(gain2 - (enc_pos2 - prev_pos2), 0, 4);
+  gain2 = constrain(gain2 - (enc_pos2 - prev_pos2), 0, 8);
   prev_pos2 = enc_pos2;
-
-  /*gp.yaw = convert(a1, a1_min, a1_max);
-  gp.jy = convert(a3, a3_min, a3_max);
-  gp.jx = convert(a2, a2_min, a2_max);
-  gp.wheel = convert(a0, a0_min, a0_max);
-  gp.buttons = sw0 | (sw1<<1) | (sw2<<2);
-  usb_hid.sendReport(0, &gp, sizeof(gp));*/
-
-
 
   // led feedback
   int hue = int(millis() * 0.06) % 255;
@@ -332,12 +322,29 @@ void read_and_show_leds(const void *arg) {
 
   for(int i = 0;i < 5;i++) {
     int hue = map(i, 0, 4, 0, 92);
-    leds[13-i] = CHSV(hue, 255, (i <= gain1) * 128);
-    leds[14+i] = CHSV(hue, 255, (i <= gain2) * 128);
+    leds[13-i] = CHSV(hue, 255, (i <= gain1/2) * 128);
+    leds[14+i] = CHSV(hue, 255, (i <= gain2/2) * 128);
   }
   
   FastLED.show();
   delayMicroseconds(500);// don't go lower than this, weird things happen to the leds
+
+
+
+  if (!TinyUSBDevice.mounted()) {
+    return;
+  }
+  if (!usb_hid.ready()) return;
+  gp.gtrans = map(gain1/2, 0, 4, -127, 127);
+  gp.gyaw = map(gain2/2, 0, 4, -127, 127);
+  gp.trim_x = convert(a0, a0_min, a0_max);
+  gp.trim_y = convert(a1, a1_min, a1_max);
+  gp.trim_z = convert(a2, a2_min, a2_max);
+  gp.trim_yaw = convert(a3, a3_min, a3_max);
+
+  bool super_gain = button_time-RAMP_UP_TIME >= 0 && button_time-RAMP_UP_TIME < BOOST_TIME;
+  gp.buttons = sw0_on | (sw1_on<<1) | (sw2_on<<2) | (sw3_on<<3) | (super_gain<<4);
+  usb_hid.sendReport(0, &gp, sizeof(gp));
 }
 
 void show_epd() {

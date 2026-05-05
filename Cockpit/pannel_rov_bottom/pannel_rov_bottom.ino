@@ -80,6 +80,7 @@ void setup() {
   TinyUSBDevice.setManufacturerDescriptor("Underwater");
   TinyUSBDevice.setProductDescriptor("2026_ROV_bottom");
 
+  
   // Manual begin() is required on core without built-in support e.g. mbed rp2040
   if (!TinyUSBDevice.isInitialized()) {
     TinyUSBDevice.begin(0);
@@ -122,7 +123,7 @@ float mapfloat(float x, float in_min, float in_max, float out_min, float out_max
 }
 
 
-int convert(int input, int min, int max) {
+int8_t convert(int input, int min, int max) {
   float val = mapfloat(input, min*NB_SAMPLE, max*NB_SAMPLE, -1, 1) / range;
   val = val > deadzone ? val - deadzone : (val < -deadzone ? val + deadzone : 0);
   val /= (1 - deadzone);
@@ -130,11 +131,6 @@ int convert(int input, int min, int max) {
 }
 
 void loop() {
-  if (!TinyUSBDevice.mounted()) {
-    return;
-  }
-  if (!usb_hid.ready()) return;
-  
   // put your main code here, to run repeatedly:
   int sw0 = digitalRead(SW0);
   int sw1 = digitalRead(SW1);
@@ -160,6 +156,10 @@ void loop() {
   if(sw1) mode = 1;
   if(sw2) mode = 2;
 
+  if (!TinyUSBDevice.mounted()) {
+    return;
+  }
+  if (!usb_hid.ready()) return;
 
   gp.yaw = convert(a1, a1_min, a1_max);
   gp.jy = convert(a3, a3_min, a3_max);
@@ -169,9 +169,8 @@ void loop() {
   usb_hid.sendReport(0, &gp, sizeof(gp));
 
 
-
   // feedback
-  int hue = int(millis() * 0.06) % 255;
+  int hue = 0;//int(millis() * 0.06) % 255;
   leds[0] = CHSV(hue, 255, BRIGHTNESS * (mode == 0));
   leds[1] = CHSV(hue, 255, BRIGHTNESS * (mode == 1));
   leds[2] = CHSV(hue, 255, BRIGHTNESS * (mode == 2));
